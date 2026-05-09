@@ -44,10 +44,14 @@ gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]
 | `-h`<br>`--help` | `kong.helpFlag` |  | Show context-sensitive help. |
 | `-j`<br>`--json`<br>`--machine` | `bool` | false | Output JSON to stdout (best for scripting) |
 | `--location` | `string` |  | New location (set empty to clear) |
+| `--location-search` | `string` |  | Resolve a Google Places text search and use the best match as event location |
 | `--no-input`<br>`--non-interactive`<br>`--noninteractive` | `bool` |  | Never prompt; fail instead (useful for CI) |
 | `--ooo-auto-decline` | `string` |  | Out of Office auto-decline mode: none, all, new |
 | `--ooo-decline-message` | `string` |  | Out of Office decline message (set empty to clear) |
 | `--original-start` | `string` |  | Original start time of instance (required for scope=single,future) |
+| `--place-id` | `string` |  | Resolve a Google Places ID and use it as event location |
+| `--place-language` | `string` |  | Places API language code for location lookup |
+| `--place-region` | `string` |  | Places API region code for location lookup |
 | `-p`<br>`--plain`<br>`--tsv` | `bool` | false | Output stable, parseable text to stdout (TSV; no colors) |
 | `--private-prop` | `[]string` |  | Private extended property (key=value, can be repeated) |
 | `--reminder` | `[]string` |  | Custom reminders as method:duration (e.g., popup:30m, email:1d). Can be repeated (max 5). Set empty to clear. |

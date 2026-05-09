@@ -103,6 +103,10 @@ func buildCalendarCreatePlan(c *CalendarCreateCmd) (*calendarCreatePlan, error) 
 			Title: strings.TrimSpace(c.SourceTitle),
 		}
 	}
+	if c.resolvedPlace != nil {
+		event.Location = formatCalendarPlaceLocation(c.resolvedPlace)
+		applyCalendarPlaceProperties(event, c.resolvedPlace)
+	}
 
 	if err := c.applyCreateEventType(event, eventType); err != nil {
 		return nil, err

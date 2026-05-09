@@ -15,6 +15,7 @@ const (
 	KeyKeyringBackend Key = "keyring_backend"
 	KeyGmailNoSend    Key = "gmail_no_send"
 	KeyYoutubeAPIKey  Key = "youtube_api_key"
+	KeyPlacesAPIKey   Key = "places_api_key"
 )
 
 type KeySpec struct {
@@ -30,6 +31,7 @@ var keyOrder = []Key{
 	KeyKeyringBackend,
 	KeyGmailNoSend,
 	KeyYoutubeAPIKey,
+	KeyPlacesAPIKey,
 }
 
 var keySpecs = map[Key]KeySpec{
@@ -108,6 +110,28 @@ var keySpecs = map[Key]KeySpec{
 		},
 		EmptyHint: func() string {
 			return "(not set; set for YouTube Data API: config set youtube_api_key KEY or GOG_YOUTUBE_API_KEY)"
+		},
+	},
+	KeyPlacesAPIKey: {
+		Key: KeyPlacesAPIKey,
+		Get: func(cfg File) string {
+			if v := os.Getenv("GOG_PLACES_API_KEY"); v != "" {
+				return v
+			}
+			if v := os.Getenv("GOOGLE_PLACES_API_KEY"); v != "" {
+				return v
+			}
+			return cfg.PlacesAPIKey
+		},
+		Set: func(cfg *File, value string) error {
+			cfg.PlacesAPIKey = value
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.PlacesAPIKey = ""
+		},
+		EmptyHint: func() string {
+			return "(not set; set for Places API: config set places_api_key KEY or GOG_PLACES_API_KEY)"
 		},
 	},
 }

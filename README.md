@@ -81,6 +81,7 @@ Useful Google setup links:
 - [OAuth clients](https://console.cloud.google.com/auth/clients)
 - [OAuth consent screen](https://console.cloud.google.com/auth/branding)
 - [API library](https://console.cloud.google.com/apis/library)
+- [Places API (New)](https://console.cloud.google.com/apis/api/places.googleapis.com)
 - [YouTube Data API v3](https://console.cloud.google.com/apis/api/youtube.googleapis.com)
 - [Apps Script user setting](https://script.google.com/home/usersettings)
 
@@ -119,6 +120,10 @@ gog calendar events --today
 gog calendar create --summary "Review" \
   --from "2026-05-06T10:00:00+02:00" \
   --to "2026-05-06T10:30:00+02:00"
+gog calendar create primary --summary "Coffee" \
+  --from "2026-05-06T10:00:00+02:00" \
+  --to "2026-05-06T10:30:00+02:00" \
+  --location-search "Elysian Coffee Vancouver"
 gog calendar update primary <eventId> --with-meet
 gog calendar move primary <eventId> team-calendar@example.com
 ```

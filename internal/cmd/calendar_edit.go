@@ -20,6 +20,10 @@ type CalendarCreateCmd struct {
 	EndTimezone           string   `name:"end-timezone" aliases:"to-timezone" help:"IANA timezone metadata for --to (e.g., America/New_York)"`
 	Description           string   `name:"description" help:"Description"`
 	Location              string   `name:"location" help:"Location"`
+	LocationSearch        string   `name:"location-search" help:"Resolve a Google Places text search and use the best match as event location"`
+	PlaceID               string   `name:"place-id" help:"Resolve a Google Places ID and use it as event location"`
+	PlaceLanguage         string   `name:"place-language" help:"Places API language code for location lookup"`
+	PlaceRegion           string   `name:"place-region" help:"Places API region code for location lookup"`
 	Attendees             string   `name:"attendees" help:"Comma-separated attendee emails"`
 	AllDay                bool     `name:"all-day" help:"All-day event (use date-only in --from/--to)"`
 	Recurrence            []string `name:"rrule" help:"Recurrence rules (e.g., 'RRULE:FREQ=MONTHLY;BYMONTHDAY=11'). Can be repeated." sep:"none"`
@@ -49,9 +53,14 @@ type CalendarCreateCmd struct {
 	WorkingFloorId        string   `name:"working-floor-id" help:"Working location floor ID"`
 	WorkingDeskId         string   `name:"working-desk-id" help:"Working location desk ID"`
 	WorkingCustomLabel    string   `name:"working-custom-label" help:"Working location custom label"`
+	resolvedPlace         *calendarPlace
 }
 
 func (c *CalendarCreateCmd) Run(ctx context.Context, flags *RootFlags) error {
+	if err := c.resolvePlace(ctx); err != nil {
+		return err
+	}
+
 	plan, err := buildCalendarCreatePlan(c)
 	if err != nil {
 		return err
@@ -210,6 +219,10 @@ type CalendarUpdateCmd struct {
 	EndTimezone           string   `name:"end-timezone" aliases:"to-timezone" help:"IANA timezone metadata for --to (e.g., America/New_York)"`
 	Description           string   `name:"description" help:"New description (set empty to clear)"`
 	Location              string   `name:"location" help:"New location (set empty to clear)"`
+	LocationSearch        string   `name:"location-search" help:"Resolve a Google Places text search and use the best match as event location"`
+	PlaceID               string   `name:"place-id" help:"Resolve a Google Places ID and use it as event location"`
+	PlaceLanguage         string   `name:"place-language" help:"Places API language code for location lookup"`
+	PlaceRegion           string   `name:"place-region" help:"Places API region code for location lookup"`
 	Attendees             string   `name:"attendees" help:"Comma-separated attendee emails (replaces all; set empty to clear)"`
 	AddAttendee           string   `name:"add-attendee" help:"Comma-separated attendee emails to add (preserves existing attendees)"`
 	AllDay                bool     `name:"all-day" help:"All-day event (use date-only in --from/--to)"`
@@ -239,6 +252,7 @@ type CalendarUpdateCmd struct {
 	WorkingDeskId         string   `name:"working-desk-id" help:"Working location desk ID"`
 	WorkingCustomLabel    string   `name:"working-custom-label" help:"Working location custom label"`
 	SendUpdates           string   `name:"send-updates" help:"Notification mode: all, externalOnly, none (default: none)"`
+	resolvedPlace         *calendarPlace
 }
 
 func (c *CalendarUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *RootFlags) error {
@@ -266,6 +280,9 @@ func (c *CalendarUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *
 	// Cannot use both --attendees and --add-attendee at the same time.
 	if flagProvided(kctx, "attendees") && flagProvided(kctx, "add-attendee") {
 		return usage("cannot use both --attendees and --add-attendee; use --attendees to replace all, or --add-attendee to add")
+	}
+	if err := c.resolvePlace(ctx, kctx); err != nil {
+		return err
 	}
 
 	sendUpdates, err := validateSendUpdates(c.SendUpdates)
@@ -402,6 +419,10 @@ func (c *CalendarUpdateCmd) buildUpdatePatch(kctx *kong.Context) (*calendar.Even
 	if c.applyExtendedProperties(kctx, patch) {
 		changed = true
 	}
+	if c.resolvedPlace != nil {
+		applyCalendarPlaceProperties(patch, c.resolvedPlace)
+		changed = true
+	}
 
 	eventTypeChanged, err := c.applyEventTypeProperties(kctx, patch, eventType, eventTypeRequested, focusFlags, oooFlags, workingFlags)
 	if err != nil {
@@ -437,6 +458,10 @@ func (c *CalendarUpdateCmd) applyTextFields(kctx *kong.Context, patch *calendar.
 	}
 	if flagProvided(kctx, "location") {
 		patch.Location = strings.TrimSpace(c.Location)
+		changed = true
+	}
+	if c.resolvedPlace != nil {
+		patch.Location = formatCalendarPlaceLocation(c.resolvedPlace)
 		changed = true
 	}
 	return changed
