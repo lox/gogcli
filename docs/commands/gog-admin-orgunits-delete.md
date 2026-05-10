@@ -1,24 +1,18 @@
-# `gog admin`
+# `gog admin orgunits delete`
 
 > Generated from `gog schema --json`. Do not edit this page by hand; run `make docs-commands`.
 
-Google Workspace Admin (Directory API) - requires domain-wide delegation
+Delete an organizational unit
 
 ## Usage
 
 ```bash
-gog admin <command> [flags]
+gog admin orgunits (org-units,ou) delete (rm,del,remove) <path>
 ```
 
 ## Parent
 
-- [gog](gog.md)
-
-## Subcommands
-
-- [gog admin groups](gog-admin-groups.md) - Manage Workspace groups
-- [gog admin orgunits](gog-admin-orgunits.md) - Manage Workspace organizational units
-- [gog admin users](gog-admin-users.md) - Manage Workspace users
+- [gog admin orgunits](gog-admin-orgunits.md)
 
 ## Flags
 
@@ -44,5 +38,5 @@ gog admin <command> [flags]
 
 ## See Also
 
-- [gog](gog.md)
+- [gog admin orgunits](gog-admin-orgunits.md)
 - [Command index](README.md)
