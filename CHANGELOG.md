@@ -15,6 +15,7 @@
 - Release: update the Homebrew handoff to publish through `openclaw/tap`.
 - Version: `gog --version` now reports an informative fallback (for example, `v0.17.0-dev`) when built from source with plain `go build` instead of returning `dev`.
 - Docs: `gog docs insert` now defaults to end-of-doc when `--index` is omitted, instead of always inserting at position 1 (which silently reversed iterative inserts across multiple calls). Pass `--index 1` explicitly to keep the previous behaviour. (#606)
+- Docs: `docs write --append --markdown` with three or more markdown tables in a single render no longer drifts the per-table insertion offset by one character per table — the trailing punctuation of the paragraph immediately before the third (and any subsequent) table is preserved instead of being split into a standalone paragraph after the table. (#607)
 - Docs: `docs write --append --markdown` now expands inline markdown markers (`**bold**`, `*italic*`, `` `code` ``, `[link](url)`) inside table cells into character runs, matching the behaviour outside of tables — previously the markers rendered as literal characters because the table inserter bypassed the inline-formatting pass. (#608)
 - Docs: markdown empty-header table rows (e.g. `|   |   |`) no longer collide with the separator detection — previously `docs write --append --markdown` swallowed both the empty header and the real `|---|---|` separator, leaving the last data row re-parsed as a literal pipe paragraph after the table. (#609)
 

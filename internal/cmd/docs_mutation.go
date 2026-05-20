@@ -169,9 +169,7 @@ func replaceDocsMarkdownRange(ctx context.Context, svc *docs.Service, doc *docs.
 			if tableErr != nil {
 				return fmt.Errorf("insert native table: %w", tableErr)
 			}
-			if tableEnd > tableIndex {
-				tableOffset += (tableEnd - tableIndex) - 1
-			}
+			tableOffset = nextTableInsertOffset(tableOffset, tableIndex, tableEnd)
 		}
 	}
 
@@ -234,9 +232,7 @@ func insertDocsMarkdownAt(ctx context.Context, svc *docs.Service, docID string, 
 			if tableErr != nil {
 				return len(requests), len(textToInsert), fmt.Errorf("insert native table: %w", tableErr)
 			}
-			if tableEnd > tableIndex {
-				tableOffset += (tableEnd - tableIndex) - 1
-			}
+			tableOffset = nextTableInsertOffset(tableOffset, tableIndex, tableEnd)
 		}
 	}
 
