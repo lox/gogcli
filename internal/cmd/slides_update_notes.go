@@ -69,12 +69,15 @@ func (c *SlidesUpdateNotesCmd) Run(ctx context.Context, flags *RootFlags) error 
 		return fmt.Errorf("could not find speaker notes placeholder on slide %s", slideID)
 	}
 
-	requests := buildSlidesClearAndInsertTextRequests(notesObjectID, notes)
-	_, err = slidesSvc.Presentations.BatchUpdate(presentationID, &slides.BatchUpdatePresentationRequest{
-		Requests: requests,
-	}).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("update speaker notes: %w", err)
+	notesPage := slide.SlideProperties.NotesPage
+	requests := buildSlidesReplaceTextRequests(notesObjectID, notes, slidesPageElementHasText(notesPage, notesObjectID))
+	if len(requests) > 0 {
+		_, err = slidesSvc.Presentations.BatchUpdate(presentationID, &slides.BatchUpdatePresentationRequest{
+			Requests: requests,
+		}).Context(ctx).Do()
+		if err != nil {
+			return fmt.Errorf("update speaker notes: %w", err)
+		}
 	}
 
 	u.Out().Linef("Updated notes on slide %s", slideID)

@@ -198,6 +198,73 @@ func TestSlidesReadSlide_JSON(t *testing.T) {
 	}
 }
 
+func TestSlidesReadSlide_JSONEmptyArrays(t *testing.T) {
+	origSlides := newSlidesService
+	t.Cleanup(func() { newSlidesService = origSlides })
+
+	presResp := map[string]any{
+		"presentationId": "pres1",
+		"slides": []any{
+			map[string]any{
+				"objectId":     "slide_1",
+				"pageElements": []any{},
+			},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/presentations/pres1") && r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(presResp)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc, err := slides.NewService(context.Background(),
+		option.WithoutAuthentication(),
+		option.WithHTTPClient(srv.Client()),
+		option.WithEndpoint(srv.URL+"/"),
+	)
+	if err != nil {
+		t.Fatalf("slides.NewService: %v", err)
+	}
+	newSlidesService = func(context.Context, string) (*slides.Service, error) { return svc, nil }
+
+	flags := &RootFlags{Account: "a@b.com"}
+	out := captureStdout(t, func() {
+		ctx := outfmt.WithMode(newQuietUIContext(t), outfmt.Mode{JSON: true})
+		cmd := &SlidesReadSlideCmd{
+			PresentationID: "pres1",
+			SlideID:        "slide_1",
+		}
+		if err := cmd.Run(ctx, flags); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	})
+
+	var result struct {
+		TextElements []json.RawMessage `json:"textElements"`
+		Images       []json.RawMessage `json:"images"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("JSON parse: %v\noutput: %q", err, out)
+	}
+	if result.TextElements == nil {
+		t.Fatalf("textElements must be an empty array, got nil: %s", out)
+	}
+	if len(result.TextElements) != 0 {
+		t.Fatalf("textElements len = %d, want 0", len(result.TextElements))
+	}
+	if result.Images == nil {
+		t.Fatalf("images must be an empty array, got nil: %s", out)
+	}
+	if len(result.Images) != 0 {
+		t.Fatalf("images len = %d, want 0", len(result.Images))
+	}
+}
+
 func TestSlidesReadSlide_NotFound(t *testing.T) {
 	origSlides := newSlidesService
 	t.Cleanup(func() { newSlidesService = origSlides })

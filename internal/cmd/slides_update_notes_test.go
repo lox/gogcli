@@ -33,6 +33,15 @@ func updateNotesPresResponse() map[string]any {
 								"objectId": "notes_body_1",
 								"shape": map[string]any{
 									"placeholder": map[string]any{"type": "BODY"},
+									"text": map[string]any{
+										"textElements": []any{
+											map[string]any{
+												"textRun": map[string]any{
+													"content": "Existing notes",
+												},
+											},
+										},
+									},
 								},
 							},
 						},
@@ -41,6 +50,13 @@ func updateNotesPresResponse() map[string]any {
 			},
 		},
 	}
+}
+
+func updateNotesEmptyPresResponse() map[string]any {
+	resp := updateNotesPresResponse()
+	notesShape := resp["slides"].([]any)[0].(map[string]any)["slideProperties"].(map[string]any)["notesPage"].(map[string]any)["pageElements"].([]any)[0].(map[string]any)["shape"].(map[string]any)
+	delete(notesShape, "text")
+	return resp
 }
 
 func ptrString(v string) *string { return &v }
@@ -116,6 +132,70 @@ func TestSlidesUpdateNotes(t *testing.T) {
 		t.Error("expected second request to be InsertText")
 	} else if capturedRequests[1].InsertText.Text != "Updated notes content" {
 		t.Errorf("expected inserted text to be 'Updated notes content', got %q", capturedRequests[1].InsertText.Text)
+	}
+}
+
+func TestSlidesUpdateNotes_EmptySpeakerNotesInsertsOnly(t *testing.T) {
+	origSlides := newSlidesService
+	t.Cleanup(func() { newSlidesService = origSlides })
+
+	var capturedRequests []*slides.Request
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case strings.HasSuffix(r.URL.Path, ":batchUpdate") && r.Method == http.MethodPost:
+			var req slides.BatchUpdatePresentationRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+				capturedRequests = req.Requests
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"presentationId": "pres1",
+				"replies":        []any{},
+			})
+		case strings.Contains(r.URL.Path, "/presentations/pres1") && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(updateNotesEmptyPresResponse())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	svc, err := slides.NewService(context.Background(),
+		option.WithoutAuthentication(),
+		option.WithHTTPClient(srv.Client()),
+		option.WithEndpoint(srv.URL+"/"),
+	)
+	if err != nil {
+		t.Fatalf("slides.NewService: %v", err)
+	}
+	newSlidesService = func(context.Context, string) (*slides.Service, error) { return svc, nil }
+
+	flags := &RootFlags{Account: "a@b.com"}
+	u, uiErr := ui.New(ui.Options{Stdout: io.Discard, Stderr: io.Discard, Color: "never"})
+	if uiErr != nil {
+		t.Fatalf("ui.New: %v", uiErr)
+	}
+	ctx := ui.WithUI(context.Background(), u)
+
+	cmd := &SlidesUpdateNotesCmd{
+		PresentationID: "pres1",
+		SlideID:        "slide_1",
+		Notes:          ptrString("New notes"),
+	}
+	if err := cmd.Run(ctx, flags); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if len(capturedRequests) != 1 {
+		t.Fatalf("expected 1 request for empty notes, got %d", len(capturedRequests))
+	}
+	if capturedRequests[0].InsertText == nil {
+		t.Fatalf("expected InsertText only, got %+v", capturedRequests[0])
+	}
+	if capturedRequests[0].InsertText.Text != "New notes" {
+		t.Fatalf("inserted text = %q", capturedRequests[0].InsertText.Text)
 	}
 }
 

@@ -272,20 +272,18 @@ func TestSlidesReplaceSlide_WithNotes(t *testing.T) {
 		t.Errorf("expected notes update confirmation, got: %q", out)
 	}
 
-	// Should have ReplaceImage + DeleteText + InsertText = 3 requests
-	if len(capturedRequests) != 3 {
-		t.Fatalf("expected 3 requests in batch, got %d", len(capturedRequests))
+	// Blank notes placeholders must not be cleared before insertion; Google
+	// rejects DeleteText{ALL} on an empty notes box.
+	if len(capturedRequests) != 2 {
+		t.Fatalf("expected ReplaceImage + InsertText (2 requests), got %d", len(capturedRequests))
 	}
 	if capturedRequests[0].ReplaceImage == nil {
 		t.Error("expected first request to be ReplaceImage")
 	}
-	if capturedRequests[1].DeleteText == nil {
-		t.Error("expected second request to be DeleteText")
-	}
-	if capturedRequests[2].InsertText == nil {
-		t.Error("expected third request to be InsertText")
-	} else if capturedRequests[2].InsertText.Text != "New notes for replaced slide" {
-		t.Errorf("expected notes text, got %q", capturedRequests[2].InsertText.Text)
+	if capturedRequests[1].InsertText == nil {
+		t.Error("expected second request to be InsertText")
+	} else if capturedRequests[1].InsertText.Text != "New notes for replaced slide" {
+		t.Errorf("expected notes text, got %q", capturedRequests[1].InsertText.Text)
 	}
 }
 
@@ -646,14 +644,11 @@ func TestSlidesReplaceSlide_ClearNotesWithEmptyFlag(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if len(capturedRequests) != 2 {
-		t.Fatalf("expected ReplaceImage + DeleteText (2 requests), got %d", len(capturedRequests))
+	if len(capturedRequests) != 1 {
+		t.Fatalf("expected ReplaceImage only for already-empty notes, got %d", len(capturedRequests))
 	}
 	if capturedRequests[0].ReplaceImage == nil {
 		t.Fatal("expected first request to be ReplaceImage")
-	}
-	if capturedRequests[1].DeleteText == nil {
-		t.Fatal("expected second request to be DeleteText")
 	}
 }
 

@@ -160,7 +160,8 @@ func (c *SlidesReplaceSlideCmd) Run(ctx context.Context, flags *RootFlags) error
 		if notesObjectID == "" {
 			return fmt.Errorf("could not find speaker notes placeholder on slide %s", slideID)
 		}
-		requests = append(requests, buildSlidesClearAndInsertTextRequests(notesObjectID, notes)...)
+		notesPage := slide.SlideProperties.NotesPage
+		requests = append(requests, buildSlidesReplaceTextRequests(notesObjectID, notes, slidesPageElementHasText(notesPage, notesObjectID))...)
 	}
 
 	_, err = slidesSvc.Presentations.BatchUpdate(presentationID, &slides.BatchUpdatePresentationRequest{

@@ -24,6 +24,8 @@
 - Gmail: make `gmail track setup`, `gmail track status`, and `gmail track key rotate` honor `--json` on success without printing generated tracking secrets to stderr.
 - Gmail: return an empty JSON array, not null, for empty Gmail filter lists and JSON filter exports.
 - Sheets: return an empty JSON array, not null, for blank ranges read with `sheets get --json`.
+- Slides: return empty JSON arrays, not null, for blank slide text and image lists in `slides read-slide`.
+- Slides: avoid invalid `deleteText` requests when updating speaker notes on a blank notes page.
 - YouTube: let `activities list --channel-id`, `playlists list --channel-id`, and `channels list --id` honor `--account` OAuth instead of requiring an API key.
 
 ## 0.20.0 - 2026-05-30

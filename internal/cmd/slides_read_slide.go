@@ -59,7 +59,8 @@ func (c *SlidesReadSlideCmd) Run(ctx context.Context, flags *RootFlags) error {
 
 	// Extract speaker notes
 	var notesText string
-	if np := slide.SlideProperties.NotesPage; np != nil {
+	if slide.SlideProperties != nil && slide.SlideProperties.NotesPage != nil {
+		np := slide.SlideProperties.NotesPage
 		for _, el := range np.PageElements {
 			if el.Shape != nil && el.Shape.Text != nil {
 				if el.Shape.Placeholder != nil && el.Shape.Placeholder.Type == placeholderTypeBody {
@@ -75,7 +76,7 @@ func (c *SlidesReadSlideCmd) Run(ctx context.Context, flags *RootFlags) error {
 	notesText = strings.TrimRight(notesText, "\n")
 
 	// Extract text elements from the slide itself
-	var textElements []map[string]any
+	textElements := []map[string]any{}
 	for _, el := range slide.PageElements {
 		if el.Shape != nil && el.Shape.Text != nil {
 			var text string
@@ -95,7 +96,7 @@ func (c *SlidesReadSlideCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}
 
 	// Extract image references
-	var images []map[string]any
+	images := []map[string]any{}
 	for _, el := range slide.PageElements {
 		if el.Image != nil {
 			img := map[string]any{

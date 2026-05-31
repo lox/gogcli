@@ -65,16 +65,34 @@ func findSpeakerNotesObjectID(slide *slides.Page) string {
 	return ""
 }
 
-func buildSlidesClearAndInsertTextRequests(objectID string, text string) []*slides.Request {
-	requests := []*slides.Request{
-		{
+func slidesPageElementHasText(page *slides.Page, objectID string) bool {
+	if page == nil || objectID == "" {
+		return false
+	}
+	for _, el := range page.PageElements {
+		if el == nil || el.ObjectId != objectID || el.Shape == nil || el.Shape.Text == nil {
+			continue
+		}
+		for _, textElement := range el.Shape.Text.TextElements {
+			if textElement != nil && textElement.TextRun != nil && textElement.TextRun.Content != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func buildSlidesReplaceTextRequests(objectID string, text string, hasExistingText bool) []*slides.Request {
+	requests := []*slides.Request{}
+	if hasExistingText {
+		requests = append(requests, &slides.Request{
 			DeleteText: &slides.DeleteTextRequest{
 				ObjectId: objectID,
 				TextRange: &slides.Range{
 					Type: "ALL",
 				},
 			},
-		},
+		})
 	}
 	if text != "" {
 		requests = append(requests, &slides.Request{
@@ -85,4 +103,8 @@ func buildSlidesClearAndInsertTextRequests(objectID string, text string) []*slid
 		})
 	}
 	return requests
+}
+
+func buildSlidesClearAndInsertTextRequests(objectID string, text string) []*slides.Request {
+	return buildSlidesReplaceTextRequests(objectID, text, true)
 }
