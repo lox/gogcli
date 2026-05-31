@@ -548,6 +548,10 @@ func TestExecute_ClassroomValidationErrors(t *testing.T) {
 		if err := Execute([]string{"--account", "a@b.com", "classroom", "submissions", "grade", "c1", "cw1", "s1", "--assigned", "bad"}); err == nil {
 			t.Fatalf("expected error for invalid grade value")
 		}
+		err := Execute([]string{"--account", "a@b.com", "classroom", "invitations", "list"})
+		if err == nil || !strings.Contains(err.Error(), "at least one of --course or --user is required") {
+			t.Fatalf("expected invitation filter error, got %v", err)
+		}
 	})
 }
 

@@ -13,6 +13,7 @@
 - Backup: keep semantic manifest counts such as `contacts.connections` and `contacts.other` in `backup verify` and `backup export` results after shard verification.
 - Calendar: reject all-day or date-only Out of Office event requests locally because Google Calendar only accepts timed OOO events on enterprise calendars.
 - Contacts: use an other-contact-safe read mask for `contacts other list` and `contacts other search` so Google does not reject the request.
+- Classroom: reject unfiltered `classroom invitations list` locally because the API requires `--course` or `--user`.
 - YouTube: let `activities list --channel-id`, `playlists list --channel-id`, and `channels list --id` honor `--account` OAuth instead of requiring an API key.
 
 ## 0.20.0 - 2026-05-30
