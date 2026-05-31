@@ -288,7 +288,7 @@ type AuthKeepCmd struct {
 	Key   string `name:"key" required:"" help:"Path to service account JSON key file"`
 }
 
-func (c *AuthKeepCmd) Run(ctx context.Context, _ *RootFlags) error {
+func (c *AuthKeepCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
 
 	email := strings.TrimSpace(c.Email)
@@ -320,6 +320,15 @@ func (c *AuthKeepCmd) Run(ctx context.Context, _ *RootFlags) error {
 	}
 	genericPath, err := config.ServiceAccountPath(email)
 	if err != nil {
+		return err
+	}
+
+	if err := dryRunExit(ctx, flags, "auth.keep", map[string]any{
+		"email":        email,
+		"key_path":     keyPath,
+		"dest_path":    destPath,
+		"generic_path": genericPath,
+	}); err != nil {
 		return err
 	}
 

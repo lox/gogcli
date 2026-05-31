@@ -17,6 +17,10 @@ func TestDryRunE2E_MutatingCommandsSkipAuthAndAPI(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte(`{"email":"user@example.com","refresh_token":"redacted"}`), 0o600); err != nil {
 		t.Fatalf("write dry-run token: %v", err)
 	}
+	serviceAccountPath := filepath.Join(t.TempDir(), "service-account.json")
+	if err := os.WriteFile(serviceAccountPath, []byte(`{"type":"service_account","client_email":"svc@example.com","client_id":"123"}`), 0o600); err != nil {
+		t.Fatalf("write dry-run service account: %v", err)
+	}
 	markdownPath := filepath.Join(t.TempDir(), "slides.md")
 	if err := os.WriteFile(markdownPath, []byte("## Slide\nBody"), 0o600); err != nil {
 		t.Fatalf("write dry-run markdown: %v", err)
@@ -201,6 +205,11 @@ func TestDryRunE2E_MutatingCommandsSkipAuthAndAPI(t *testing.T) {
 			name: "auth service account unset",
 			args: []string{"auth", "service-account", "unset", "user@example.com"},
 			op:   "auth.service_account.unset",
+		},
+		{
+			name: "auth keep",
+			args: []string{"auth", "keep", "user@example.com", "--key", serviceAccountPath},
+			op:   "auth.keep",
 		},
 		{
 			name: "admin groups members add",
