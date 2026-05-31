@@ -67,7 +67,7 @@ func TestPrintCalendarEvent_AllFields(t *testing.T) {
 		GuestsCanSeeOtherGuests: &guestsCanSee,
 		HangoutLink:             "https://meet.example.com/abc",
 		ConferenceData: &calendar.ConferenceData{EntryPoints: []*calendar.EntryPoint{
-			{EntryPointType: "video", Uri: "https://video.example.com/room"},
+			{EntryPointType: calendarEntryPointTypeVideo, Uri: "https://video.example.com/room"},
 		}},
 		Recurrence: []string{"RRULE:FREQ=DAILY"},
 		Reminders: &calendar.EventReminders{

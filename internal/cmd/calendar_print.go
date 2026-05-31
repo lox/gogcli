@@ -10,6 +10,8 @@ import (
 	"github.com/steipete/gogcli/internal/ui"
 )
 
+const calendarEntryPointTypeVideo = "video"
+
 func printCalendarEventWithTimezone(u *ui.UI, event *calendar.Event, calendarTimezone string, loc *time.Location) {
 	if u == nil || event == nil {
 		return
@@ -77,7 +79,7 @@ func printCalendarEventWithTimezone(u *ui.UI, event *calendar.Event, calendarTim
 	}
 	if event.ConferenceData != nil && len(event.ConferenceData.EntryPoints) > 0 {
 		for _, ep := range event.ConferenceData.EntryPoints {
-			if ep.EntryPointType == "video" {
+			if ep.EntryPointType == calendarEntryPointTypeVideo {
 				u.Out().Linef("video-link\t%s", ep.Uri)
 			}
 		}

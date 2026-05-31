@@ -602,7 +602,7 @@ func TestCalendarUpdateCmd_RegenerateZoomWithUnparseablePriorMeetingWarns(t *tes
 				"id": "ev",
 				"conferenceData": map[string]any{
 					"conferenceSolution": map[string]any{"key": map[string]any{"type": "addOn"}, "name": "Zoom Meeting"},
-					"entryPoints":        []map[string]any{{"entryPointType": "video", "uri": "https://example.zoom.us/not-a-meeting"}},
+					"entryPoints":        []map[string]any{{"entryPointType": calendarEntryPointTypeVideo, "uri": "https://example.zoom.us/not-a-meeting"}},
 				},
 			})
 		case r.Method == http.MethodPatch:
@@ -668,7 +668,7 @@ func zoomEventJSON(id, meetingID string) map[string]any {
 		"conferenceData": map[string]any{
 			"conferenceSolution": map[string]any{"key": map[string]any{"type": "addOn"}, "name": "Zoom Meeting"},
 			"entryPoints": []map[string]any{{
-				"entryPointType": "video",
+				"entryPointType": calendarEntryPointTypeVideo,
 				"uri":            "https://example.zoom.us/j/" + meetingID + "?pwd=secret",
 			}},
 		},

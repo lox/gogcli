@@ -407,7 +407,7 @@ func TestCalendarUpdateCmd_WithMeetExistingConferenceIsIdempotent(t *testing.T) 
 				"hangoutLink": "https://meet.google.com/existing",
 				"conferenceData": map[string]any{
 					"entryPoints": []map[string]any{
-						{"entryPointType": "video", "uri": "https://meet.google.com/existing"},
+						{"entryPointType": calendarEntryPointTypeVideo, "uri": "https://meet.google.com/existing"},
 					},
 				},
 			})
