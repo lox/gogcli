@@ -9,135 +9,23 @@
 
 ### Fixed
 
-- Backup: make `backup init --dry-run` return a dry-run payload without writing config, creating a repo, or touching the configured remote.
-- Backup: make `backup init --no-push` initialize a local-only repo when no remote is explicitly provided instead of cloning the default remote.
-- Backup: return usage exit code 2 for unsupported `backup push --services` values instead of reporting them as generic runtime failures.
-- Backup: return usage exit code 2 when `backup export --out` points inside the backup repo.
-- Backup: return usage exit code 2 for invalid backup size, timeout, and checkpoint bounds before OAuth or repository setup.
-- Backup: keep semantic manifest counts such as `contacts.connections` and `contacts.other` in `backup verify` and `backup export` results after shard verification.
-- Auth: return usage exit code 2 for unknown `--services` values instead of reporting them as generic runtime failures.
-- Auth: return usage exit code 2 for invalid service-account key JSON instead of reporting it as a generic runtime failure.
-- Auth: make `auth keep --dry-run` report the planned service-account paths without writing files.
-- Auth: make `zoom auth setup --dry-run` report a redacted plan without writing Zoom metadata or keyring secrets.
-- Admin: return usage exit code 2 for non-positive users/groups list `--max` values before account/workspace setup.
-- Admin: validate user and group member email inputs before reporting dry-run success.
-- Calendar: make `calendar conflicts` check all calendars by default and reject explicit one-calendar selections instead of silently reporting no cross-calendar conflicts.
-- Calendar: return an empty JSON array, not null, for `calendar conflicts --json` when no conflicts are found.
-- Calendar: return usage exit code 2 for invalid event type, color, visibility, transparency, notification, and recurring-scope flags.
-- Calendar: return usage exit code 2 for invalid focus-time and working-location flag values instead of reporting them as generic runtime failures.
-- Calendar: validate focus-time RFC3339 datetimes and working-location dates before dry-run instead of accepting invalid event payloads.
-- Calendar: return usage exit code 2 for invalid time-range flags instead of reporting them as generic runtime failures.
-- Calendar: return usage exit code 2 for invalid `calendar respond --status` values instead of reporting them as generic runtime failures.
-- Calendar: return usage exit code 2 for invalid create-event timezones and reminders instead of reporting them as generic runtime failures.
-- Calendar: return usage exit code 2 when `calendar respond` cannot respond to the selected event.
-- Calendar: return usage exit code 2 when `calendar propose-time --decline` cannot decline the selected event.
-- Calendar: return usage exit code 2 for empty `calendar search` queries instead of reporting them as generic runtime failures.
-- Calendar: return usage exit code 2 for non-positive list/search/team/users `--max` values before auth/API setup.
-- Calendar: reject all-day or date-only Out of Office event requests locally because Google Calendar only accepts timed OOO events on enterprise calendars.
-- Chat: validate DM recipient emails before dry-run instead of accepting invalid direct-message requests.
-- Chat: validate reaction delete resource paths before dry-run instead of accepting invalid reaction delete requests.
-- Chat: reject malformed space, thread, and message resource paths before dry-run instead of accepting invalid Chat requests.
-- Chat: validate space member emails and `users/...` identifiers before dry-run instead of accepting invalid space setup requests.
-- Chat: return usage exit code 2 for non-positive list/find `--max` values before account/workspace setup.
-- Contacts: warm the People API contact-search cache, including Google's documented propagation wait, before contact and other-contact searches plus Gmail `--from-contact` resolution so fresh contact changes are visible.
-- Contacts: make `contacts raw <email>` and `people raw <email>` resolve the email to its contact resource before calling People.Get.
-- Contacts: use an other-contact-safe read mask for `contacts other list` and `contacts other search` so Google does not reject the request.
-- Contacts: validate create/update email inputs before reporting dry-run success.
-- Contacts: return usage exit code 2 for non-positive `contacts list/search --max` values before auth/API setup.
-- Contacts: return usage exit code 2 for non-positive directory and other-contact list/search `--max` values before auth/API setup.
-- Classroom: return empty JSON arrays, not null, for empty course, roster, invitation, guardian, coursework, material, announcement, topic, and submission lists.
-- Classroom: reject unfiltered `classroom invitations list` locally because the API requires `--course` or `--user`.
-- Classroom: report the canonical hyphenated dry-run op for `guardian-invitations create`.
-- Classroom: return usage exit code 2 for non-positive list `--max` values before auth/API setup.
-- Config: return usage exit code 2 for invalid config keys and values instead of reporting them as generic runtime failures.
-- Forms: return an empty JSON array, not null, for `forms watch list` when a form has no active watches.
-- Forms: return an empty JSON array, not null, for `forms responses list` when a form has no responses.
-- Forms: return usage exit code 2 when `forms watch create --topic` is not in `projects/{project}/topics/{topic}` format instead of accepting an invalid dry-run.
-- Forms: return usage exit code 2 when `forms add-question --index` is below `-1` instead of treating every negative value as append.
-- Sheets: return usage exit code 2 for explicit negative `sheets freeze --rows` and `--cols` values instead of treating `-1` as the internal unset sentinel.
-- Slides: make `slides update-notes --json` and `slides delete-slide --json` return valid JSON, and require `--force` for slide deletion in non-interactive runs.
-- Maps: validate invalid `--mode`, `--units`, and reverse-geocode coordinates before API-key lookup, and use a generic Maps/Places API-key setup error across Maps and Calendar Places commands.
-- MCP: fix docs examples so exact command allowlists include `mcp` and wildcard tool selectors are shell-safe.
-- Docs/Sheets/Slides: report service-specific dry-run ops for `copy` commands instead of `drive.copy`.
-- Drive Upload: return usage exit code 2 for invalid `--convert-to` values and unsupported `--convert` file types instead of reporting them as generic runtime failures.
-- Docs: return usage exit code 2 when Markdown writes contain local image references that must be hosted at a public HTTPS URL.
-- Docs: return usage exit code 2 when `docs sed` table operations target missing or out-of-range tables, rows, or columns.
-- Docs: return usage exit code 2 when `docs sed` receives malformed expressions.
-- Docs: return usage exit code 2 when `docs cell-style` and `docs table-column-width` target missing or out-of-range tables or columns.
-- Docs: validate comment anchor JSON before dry-run instead of accepting invalid comment anchor requests.
-- CLI: report public command paths in dry-run op fields for service-account, Calendar, Forms, Meet, and Sheets named-range commands.
-- CLI: keep `open --type` explicit shortcuts from turning unsupported non-Google URLs into malformed Google editor URLs.
-- CLI: preserve command-local `--fields` API masks for Drive, Drive Labels, Sites, and Calendar Events instead of rewriting them to JSON `--select`.
-- Drive: return usage exit code 2 when `drive download --tab` rejects unsupported export formats.
-- Drive: return usage exit code 2 when `drive download --format` is used on binary/non-Google Workspace files.
-- Drive: return usage exit code 2 when `drive upload --replace` rejects Google Workspace native files.
-- Drive: return usage exit code 2 for non-positive `drive drives --max` values before auth/API setup.
-- Drive: return usage exit code 2 for non-positive `drive changes list --max` values before auth/API setup.
-- Drive Activity: return usage exit code 2 for non-positive `--max` and unknown `--actions` values before auth/API setup.
-- Drive Labels: return usage exit code 2 for invalid integer field values instead of reporting them as generic runtime failures.
-- Drive Labels: return usage exit code 2 for invalid `--fields-json` values instead of reporting them as generic runtime failures.
-- Drive Labels: reject fractional JSON integer values, malformed date values, malformed user emails, and trailing JSON tokens before dry-run/API setup.
-- Drive Labels: return usage exit code 2 for non-positive list `--max` values before auth/API setup.
-- Drive/Sites: return usage exit code 2 for non-positive list/search `--max` values before auth/API setup.
-- Drive: return usage exit code 2 when `drive changes watch` receives a non-HTTPS webhook URL or negative expiration instead of accepting an invalid dry-run request.
-- Drive: validate share email and domain targets before dry-run instead of accepting invalid permission requests.
-- Drive: return usage exit code 2 for non-positive `drive comments list --max` values before auth/API setup.
-- Drive: return usage exit code 2 for non-positive `drive permissions --max` values before auth/API setup.
-- Drive: return usage exit code 2 for negative Drive reporting, audit, and bulk scan `--max`/`--depth` values before auth or dry-run success.
-- Gmail: return empty JSON arrays, not null, for empty forwarding address, delegate, and send-as settings lists.
-- Gmail: return usage exit code 2 for invalid vacation responder and auto-forwarding settings flags instead of reporting them as generic runtime failures.
-- Gmail: return usage exit code 2 for invalid message formats and batch-modify label flags instead of reporting them as generic runtime failures.
-- Gmail: return usage exit code 2 for invalid compose header values before send and draft dry-runs instead of reporting dry-run success.
-- Gmail: validate forwarding and send-as email settings before dry-run instead of accepting invalid settings requests.
-- Gmail: validate auto-forward and filter forwarding email settings before dry-run instead of accepting invalid forwarding requests.
-- Gmail: validate delegate email settings before dry-run instead of accepting invalid delegation requests.
-- Gmail: return usage exit code 2 for non-positive list `--max` values instead of forwarding them to Gmail APIs.
-- Gmail: return usage exit code 2 for non-positive bulk archive/trash/read/unread query `--max` values instead of reporting dry-run success.
-- Gmail: return usage exit code 2 when label rename, style, or delete commands reject immutable system labels.
-- Gmail: return usage exit code 2 when tracked send/setup options fail local validation.
-- Gmail: return usage exit code 2 when send-as commands receive an empty email argument.
-- Gmail: make `gmail track setup`, `gmail track status`, and `gmail track key rotate` honor `--json` on success without printing generated tracking secrets to stderr.
-- Gmail: keep `gmail track setup --dry-run` offline and metadata-only even when existing tracking secrets are stored in the keyring.
-- Gmail: return an empty JSON array, not null, for empty Gmail filter lists and JSON filter exports.
-- Gmail: return usage exit code 2 for invalid `gmail history --since` cursors instead of reporting them as generic runtime failures.
-- Gmail: return an empty JSON array, not null, for `gmail thread attachments --json` when a thread has no attachments.
-- Groups: return usage exit code 2 for non-positive list/members `--max` values before auth/API setup.
-- Keep: return usage exit code 2 for invalid attachment names instead of reporting them as generic runtime failures.
-- Keep: return usage exit code 2 for empty search queries instead of reporting them as generic runtime failures.
-- Keep: return usage exit code 2 for non-positive list/search `--max` values before service-account setup.
-- People: return an empty JSON array, not null, for `people relations --json` when a profile has no relation entries.
-- People: return usage exit code 2 for non-positive `people search --max` values before auth/API setup.
-- Photos: return usage exit code 2 for invalid list/search `--max` values, empty media item IDs, and invalid search date flags before auth/API setup.
-- Search Console: validate sitemap feed URLs before submit/delete dry-runs instead of accepting invalid sitemap requests.
-- Tasks: return usage exit code 2 for invalid recurrence flags instead of reporting them as generic runtime failures.
-- Tasks: validate add/update due dates before dry-run and return usage exit code 2 for invalid task date values.
-- Tasks: return usage exit code 2 for non-positive list `--max` values before auth/API setup.
-- CLI: stop advertising `ads` as an API command service in root help; it remains available as an auth-only OAuth scope.
-- Sheets: return an empty JSON array, not null, for blank ranges read with `sheets get --json`.
-- Sheets: infer `sheets format --format-fields` from `--format-json` when callers do not need a custom mask.
-- Sheets: return usage exit code 2 for missing or invalid `sheets update` and `sheets append` values instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for invalid chart specs and format JSON instead of reporting them as generic runtime failures.
-- Sheets: validate chart anchors before dry-run and return usage exit code 2 for invalid `sheets chart create --anchor` values.
-- Sheets: return usage exit code 2 for invalid formatting field masks instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for invalid banding properties JSON instead of reporting it as a generic runtime failure.
-- Sheets: return usage exit code 2 for invalid `sheets batch-update --data-json` values instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for invalid resize row and column ranges instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 when sheet-qualified range commands receive unqualified A1 ranges instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for invalid `sheets table create --columns-json` values instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for missing or invalid `sheets table append` values instead of reporting them as generic runtime failures.
-- Sheets: return usage exit code 2 for invalid `--type` values in copy-paste, merge, and number-format commands.
-- Slides: make local-image insertion/replacement use stable Drive download URLs and retry while public sharing propagates.
-- Slides: return usage exit code 2 when `slides add-slide` and `slides replace-slide` reject unsupported image formats.
-- Slides: return usage exit code 2 when `slides create-from-template` rejects invalid replacement input.
-- Slides: return usage exit code 2 when `slides insert-text --insertion-index` is negative instead of accepting an invalid dry-run request.
-- Slides: return usage exit code 2 when `slides thumbnail` rejects invalid size or format values.
-- Slides: return empty JSON arrays, not null, for blank slide text and image lists in `slides read-slide`.
-- Slides: avoid invalid `deleteText` requests when updating speaker notes on a blank notes page.
-- Time: return usage exit code 2 for invalid `time now --timezone` values instead of reporting them as generic runtime failures.
-- YouTube: let `activities list --channel-id`, `playlists list --channel-id`, and `channels list --id` honor `--account` OAuth instead of requiring an API key.
-- YouTube: return usage exit code 2 for blank IDs, empty ID/type lists, and missing chart regions before auth/API-key setup.
-- YouTube: filter `youtube search list --type` output to the requested resource kinds when the API returns mixed results.
-- YouTube: return an empty JSON array, not null, when list responses contain no items.
+- Agent/MCP: fix command-allowlist docs so examples include `mcp`, keep wildcard tool selectors shell-safe, and report public dry-run op paths for service-account, Calendar, Forms, Meet, Sheets named ranges, and Docs/Sheets/Slides copy commands.
+- Auth/credentials: return usage errors for unknown `--services` values and invalid service-account key JSON, keep `auth keep --dry-run` file-free, and make `zoom auth setup --dry-run` emit a redacted no-write plan.
+- Backup/config: make backup init/export/push validation fail before repository or OAuth side effects, keep `backup init --dry-run` and `--no-push` offline/local-only, preserve semantic manifest counts during verify/export, and return usage errors for invalid config keys or values.
+- CLI: preserve command-local `--fields` API masks, keep `open --type` shortcuts from rewriting unsupported URLs into malformed Google editor links, and stop advertising `ads` as an API command service while retaining it as an auth-only scope.
+- Validation: consistently return usage exit code 2 before auth, API-key lookup, dry-run success, or mutation for invalid list limits, empty IDs/queries, malformed dates/timezones/recurrence, invalid enum flags, invalid resource paths, malformed JSON, unsupported formats, immutable labels, and unsafe local-file Markdown image references across Admin, Calendar, Chat, Contacts, Docs, Drive, Drive Activity, Drive Labels, Forms, Gmail, Groups, Keep, Maps, People, Photos, Search Console, Sheets, Slides, Tasks, Time, and YouTube.
+- Dry-run safety: validate Gmail/Contacts/Chat/Admin email inputs, Drive share targets, Drive changes watch URLs/expiration, Docs comment anchors, Sheets chart anchors/ranges, and Search Console sitemap URLs before reporting dry-run success.
+- JSON output: return empty arrays instead of null for empty Calendar conflicts, Classroom lists, Forms responses/watches, Gmail settings/filter/thread-attachment results, People relations, blank Sheets ranges, blank Slides text/image lists, and empty YouTube list responses.
+- Calendar: make `calendar conflicts` check all calendars by default, reject explicit one-calendar conflict checks, reject unsupported all-day/date-only Out of Office payloads locally, and return usage errors when response/propose-time actions cannot be applied.
+- Contacts: warm the People API contact-search cache before contact, other-contact, and Gmail `--from-contact` searches; resolve `contacts raw <email>` and `people raw <email>` to contact resources; and use an other-contact-safe read mask for other-contact list/search.
+- Classroom: reject unfiltered `classroom invitations list` locally, report the canonical hyphenated dry-run op for `guardian-invitations create`, and normalize empty list output.
+- Docs: validate `docs sed`, `docs cell-style`, and `docs table-column-width` table targets locally; reject malformed sed expressions; and fail Markdown writes with local image references that must be public HTTPS URLs.
+- Drive: validate download/export/upload combinations before API calls, validate comment/permission limits, validate reporting/audit/bulk scan bounds, and reject invalid Drive Label field values including fractional integers, malformed dates/users, malformed `--fields-json`, and trailing JSON tokens.
+- Gmail: validate vacation, auto-forward, forwarding, send-as, delegation, filter forwarding, compose headers, message formats, batch-modify labels, history cursors, tracked-send setup options, and immutable label operations locally; keep `gmail track setup --dry-run` offline and make tracking setup/status/key rotation honor `--json` without leaking generated secrets.
+- Maps: validate mode, units, and reverse-geocode coordinates before API-key lookup, and share a generic Maps/Places API-key setup error with Calendar Places commands.
+- Sheets: infer `sheets format --format-fields` from `--format-json`, validate update/append/table values and JSON specs locally, reject invalid field masks/ranges/anchors/type flags, and reject explicit negative freeze counts instead of treating `-1` as an unset sentinel.
+- Slides: make local-image insertion/replacement use stable Drive download URLs and retry while sharing propagates, avoid invalid speaker-notes `deleteText` requests on blank notes pages, make notes/slide deletion commands return valid JSON, and require `--force` for non-interactive slide deletion.
+- YouTube: let `activities list --channel-id`, `playlists list --channel-id`, and `channels list --id` honor `--account` OAuth; filter `youtube search list --type` to requested resource kinds; and validate blank IDs/type lists/chart regions before auth or API-key setup.
 
 ## 0.20.0 - 2026-05-30
 
