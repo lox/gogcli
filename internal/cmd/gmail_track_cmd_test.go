@@ -55,6 +55,25 @@ func TestGmailTrackSetupAndStatus(t *testing.T) {
 	}
 }
 
+func TestGmailTrackSetup_InvalidWorkerNameIsUsageError(t *testing.T) {
+	setupTrackingEnv(t)
+
+	err := Execute([]string{
+		"--account", "a@b.com",
+		"--no-input",
+		"gmail", "track", "setup",
+		"--worker-name", "!!!",
+		"--worker-url", "https://example.com",
+		"--dry-run",
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid worker name") {
+		t.Fatalf("expected invalid worker name error, got: %v", err)
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("expected usage exit code 2, got %d (err=%v)", got, err)
+	}
+}
+
 func TestGmailTrackJSONOutputs(t *testing.T) {
 	setupTrackingEnv(t)
 

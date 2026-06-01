@@ -39,10 +39,10 @@ func (c *SheetsFormatCmd) Run(ctx context.Context, flags *RootFlags) error {
 	var format sheets.CellFormat
 	b, err := resolveInlineOrFileBytes(c.FormatJSON)
 	if err != nil {
-		return fmt.Errorf("read --format-json: %w", err)
+		return usagef("read --format-json: %v", err)
 	}
 	if err = decodeCellFormatJSON(b, &format); err != nil {
-		return fmt.Errorf("invalid format JSON: %w", err)
+		return usagef("invalid format JSON: %v", err)
 	}
 
 	formatFields := strings.TrimSpace(c.FormatFields)

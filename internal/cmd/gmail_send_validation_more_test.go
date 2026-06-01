@@ -30,11 +30,16 @@ func TestGmailSendCmd_ValidationErrors(t *testing.T) {
 		{To: "a@b.com", Body: "B"},
 		{To: "a@b.com", Subject: "S"},
 		{To: "a@b.com", Subject: "S", Body: "B", TrackSplit: true},
+		{To: "a@b.com", Subject: "S", Body: "B", Track: true},
 	}
 
 	for _, cmd := range cases {
-		if err := cmd.Run(ctx, flags); err == nil {
+		err := cmd.Run(ctx, flags)
+		if err == nil {
 			t.Fatalf("expected validation error")
+		}
+		if got := ExitCode(err); got != 2 {
+			t.Fatalf("expected usage exit code 2, got %d (err=%v)", got, err)
 		}
 	}
 }

@@ -51,7 +51,7 @@ func (c *GmailTrackSetupCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}
 	workerName = tracking.SanitizeWorkerName(workerName)
 	if workerName == "" {
-		return fmt.Errorf("invalid worker name")
+		return usage("invalid worker name")
 	}
 	c.WorkerName = workerName
 

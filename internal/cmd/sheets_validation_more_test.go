@@ -279,6 +279,8 @@ func TestSheetsFormat_ValidationErrors(t *testing.T) {
 	}
 	if err := (&SheetsFormatCmd{SpreadsheetID: "s1", Range: "Sheet1!A1", FormatJSON: "nope", FormatFields: "userEnteredFormat.textFormat.bold"}).Run(ctx, flags); err == nil {
 		t.Fatalf("expected format invalid json error")
+	} else if got := ExitCode(err); got != 2 {
+		t.Fatalf("expected usage exit code 2, got %d (err=%v)", got, err)
 	}
 	if err := (&SheetsFormatCmd{SpreadsheetID: "s1", Range: "Sheet1!A1", FormatJSON: "{\"boarders\":{\"top\":{\"style\":\"SOLID\"}}}", FormatFields: "borders.top.style"}).Run(ctx, flags); err == nil {
 		t.Fatalf("expected format unknown field error for boarders json typo")

@@ -36,6 +36,7 @@
 - Gmail: return usage exit code 2 for invalid vacation responder and auto-forwarding settings flags instead of reporting them as generic runtime failures.
 - Gmail: return usage exit code 2 for invalid message formats and batch-modify label flags instead of reporting them as generic runtime failures.
 - Gmail: return usage exit code 2 when label rename, style, or delete commands reject immutable system labels.
+- Gmail: return usage exit code 2 when tracked send/setup options fail local validation.
 - Gmail: make `gmail track setup`, `gmail track status`, and `gmail track key rotate` honor `--json` on success without printing generated tracking secrets to stderr.
 - Gmail: return an empty JSON array, not null, for empty Gmail filter lists and JSON filter exports.
 - Gmail: return usage exit code 2 for invalid `gmail history --since` cursors instead of reporting them as generic runtime failures.
@@ -45,6 +46,7 @@
 - Sheets: return an empty JSON array, not null, for blank ranges read with `sheets get --json`.
 - Sheets: infer `sheets format --format-fields` from `--format-json` when callers do not need a custom mask.
 - Sheets: return usage exit code 2 for missing or invalid `sheets update` and `sheets append` values instead of reporting them as generic runtime failures.
+- Sheets: return usage exit code 2 for invalid chart specs and format JSON instead of reporting them as generic runtime failures.
 - Slides: make local-image insertion/replacement use stable Drive download URLs and retry while public sharing propagates.
 - Slides: return usage exit code 2 when `slides add-slide` and `slides replace-slide` reject unsupported image formats.
 - Slides: return empty JSON arrays, not null, for blank slide text and image lists in `slides read-slide`.

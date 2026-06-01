@@ -201,7 +201,7 @@ func (c *SheetsChartCreateCmd) Run(ctx context.Context, flags *RootFlags) error 
 
 	specBytes, err := resolveInlineOrFileBytes(c.SpecJSON)
 	if err != nil {
-		return fmt.Errorf("read --spec-json: %w", err)
+		return usagef("read --spec-json: %v", err)
 	}
 	if len(specBytes) == 0 {
 		return usage("empty --spec-json")
@@ -209,7 +209,7 @@ func (c *SheetsChartCreateCmd) Run(ctx context.Context, flags *RootFlags) error 
 
 	chart, err := parseEmbeddedChartJSON(specBytes)
 	if err != nil {
-		return fmt.Errorf("invalid --spec-json: %w", err)
+		return usagef("invalid --spec-json: %v", err)
 	}
 
 	if dryErr := dryRunExit(ctx, flags, "sheets.chart.create", map[string]any{
@@ -300,7 +300,7 @@ func (c *SheetsChartUpdateCmd) Run(ctx context.Context, flags *RootFlags) error 
 
 	specBytes, err := resolveInlineOrFileBytes(c.SpecJSON)
 	if err != nil {
-		return fmt.Errorf("read --spec-json: %w", err)
+		return usagef("read --spec-json: %v", err)
 	}
 	if len(specBytes) == 0 {
 		return usage("empty --spec-json")
@@ -308,7 +308,7 @@ func (c *SheetsChartUpdateCmd) Run(ctx context.Context, flags *RootFlags) error 
 
 	spec, err := parseChartSpecJSON(specBytes)
 	if err != nil {
-		return fmt.Errorf("invalid --spec-json: %w", err)
+		return usagef("invalid --spec-json: %v", err)
 	}
 
 	if dryErr := dryRunExit(ctx, flags, "sheets.chart.update", map[string]any{
