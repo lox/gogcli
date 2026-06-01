@@ -39,6 +39,7 @@
 - Contacts: warm the People API contact-search cache, including Google's documented propagation wait, before contact and other-contact searches plus Gmail `--from-contact` resolution so fresh contact changes are visible.
 - Contacts: use an other-contact-safe read mask for `contacts other list` and `contacts other search` so Google does not reject the request.
 - Contacts: return usage exit code 2 for non-positive `contacts list/search --max` values before auth/API setup.
+- Contacts: return usage exit code 2 for non-positive directory and other-contact list/search `--max` values before auth/API setup.
 - Classroom: return empty JSON arrays, not null, for empty course, roster, invitation, guardian, coursework, material, announcement, topic, and submission lists.
 - Classroom: reject unfiltered `classroom invitations list` locally because the API requires `--course` or `--user`.
 - Classroom: report the canonical hyphenated dry-run op for `guardian-invitations create`.
@@ -84,8 +85,10 @@
 - Gmail: return an empty JSON array, not null, for empty Gmail filter lists and JSON filter exports.
 - Gmail: return usage exit code 2 for invalid `gmail history --since` cursors instead of reporting them as generic runtime failures.
 - Gmail: return an empty JSON array, not null, for `gmail thread attachments --json` when a thread has no attachments.
+- Groups: return usage exit code 2 for non-positive list/members `--max` values before auth/API setup.
 - Keep: return usage exit code 2 for invalid attachment names instead of reporting them as generic runtime failures.
 - Keep: return usage exit code 2 for empty search queries instead of reporting them as generic runtime failures.
+- Keep: return usage exit code 2 for non-positive list/search `--max` values before service-account setup.
 - People: return an empty JSON array, not null, for `people relations --json` when a profile has no relation entries.
 - Search Console: validate sitemap feed URLs before submit/delete dry-runs instead of accepting invalid sitemap requests.
 - Tasks: return usage exit code 2 for invalid recurrence flags instead of reporting them as generic runtime failures.

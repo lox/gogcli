@@ -31,6 +31,40 @@ func TestGroupsMembers_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestGroupsInvalidMaxFailsBeforeService(t *testing.T) {
+	origNew := newCloudIdentityService
+	t.Cleanup(func() { newCloudIdentityService = origNew })
+	newCloudIdentityService = func(context.Context, string) (*cloudidentity.Service, error) {
+		t.Fatalf("expected max validation to fail before creating Cloud Identity service")
+		return nil, errors.New("unexpected service call")
+	}
+
+	u, uiErr := ui.New(ui.Options{Stdout: io.Discard, Stderr: io.Discard, Color: "never"})
+	if uiErr != nil {
+		t.Fatalf("ui.New: %v", uiErr)
+	}
+	ctx := ui.WithUI(context.Background(), u)
+	flags := &RootFlags{Account: "a@b.com"}
+
+	testCases := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "list zero", run: func() error { return (&GroupsListCmd{Max: 0}).Run(ctx, flags) }},
+		{name: "list negative", run: func() error { return (&GroupsListCmd{Max: -1}).Run(ctx, flags) }},
+		{name: "members zero", run: func() error { return (&GroupsMembersCmd{GroupEmail: "eng@example.com", Max: 0}).Run(ctx, flags) }},
+		{name: "members negative", run: func() error { return (&GroupsMembersCmd{GroupEmail: "eng@example.com", Max: -1}).Run(ctx, flags) }},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.run()
+			if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "max must be > 0") {
+				t.Fatalf("unexpected err: %v", err)
+			}
+		})
+	}
+}
+
 func TestGroupsList_NoGroups_Text(t *testing.T) {
 	origNew := newCloudIdentityService
 	t.Cleanup(func() { newCloudIdentityService = origNew })
@@ -64,7 +98,7 @@ func TestGroupsList_NoGroups_Text(t *testing.T) {
 	}
 	ctx := ui.WithUI(context.Background(), u)
 
-	if err := (&GroupsListCmd{}).Run(ctx, &RootFlags{Account: "a@b.com"}); err != nil {
+	if err := (&GroupsListCmd{Max: 100}).Run(ctx, &RootFlags{Account: "a@b.com"}); err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if !strings.Contains(errBuf.String(), "No groups found") {

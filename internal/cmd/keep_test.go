@@ -92,6 +92,32 @@ func TestGetKeepService_UsesStoredServiceAccount(t *testing.T) {
 	}
 }
 
+func TestKeepInvalidMaxFailsBeforeService(t *testing.T) {
+	orig := newKeepServiceWithSA
+	t.Cleanup(func() { newKeepServiceWithSA = orig })
+	newKeepServiceWithSA = func(context.Context, string, string) (*keepapi.Service, error) {
+		t.Fatalf("expected max validation to fail before creating Keep service")
+		return nil, context.Canceled
+	}
+
+	testCases := [][]string{
+		{"--account", "a@b.com", "keep", "list", "--max", "0"},
+		{"--account", "a@b.com", "keep", "list", "--max=-1"},
+		{"--account", "a@b.com", "keep", "search", "foo", "--max", "0"},
+		{"--account", "a@b.com", "keep", "search", "foo", "--max=-1"},
+	}
+	for _, args := range testCases {
+		t.Run(strings.Join(args[2:], "_"), func(t *testing.T) {
+			_ = captureStderr(t, func() {
+				err := Execute(args)
+				if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "max must be > 0") {
+					t.Fatalf("unexpected err: %v", err)
+				}
+			})
+		})
+	}
+}
+
 func TestKeepList_Plain(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

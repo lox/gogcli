@@ -171,3 +171,41 @@ func TestExecute_ContactsMoreCommands_JSON(t *testing.T) {
 		})
 	})
 }
+
+func TestExecute_ContactsDirectoryOtherInvalidMaxFailsBeforeService(t *testing.T) {
+	origOther := newPeopleOtherContactsService
+	origDir := newPeopleDirectoryService
+	t.Cleanup(func() {
+		newPeopleOtherContactsService = origOther
+		newPeopleDirectoryService = origDir
+	})
+	newPeopleOtherContactsService = func(context.Context, string) (*people.Service, error) {
+		t.Fatalf("expected max validation to fail before creating other contacts service")
+		return nil, context.Canceled
+	}
+	newPeopleDirectoryService = func(context.Context, string) (*people.Service, error) {
+		t.Fatalf("expected max validation to fail before creating directory service")
+		return nil, context.Canceled
+	}
+
+	testCases := [][]string{
+		{"--account", "a@b.com", "contacts", "directory", "list", "--max", "0"},
+		{"--account", "a@b.com", "contacts", "directory", "list", "--max=-1"},
+		{"--account", "a@b.com", "contacts", "directory", "search", "alice", "--max", "0"},
+		{"--account", "a@b.com", "contacts", "directory", "search", "alice", "--max=-1"},
+		{"--account", "a@b.com", "contacts", "other", "list", "--max", "0"},
+		{"--account", "a@b.com", "contacts", "other", "list", "--max=-1"},
+		{"--account", "a@b.com", "contacts", "other", "search", "alice", "--max", "0"},
+		{"--account", "a@b.com", "contacts", "other", "search", "alice", "--max=-1"},
+	}
+	for _, args := range testCases {
+		t.Run(strings.Join(args[2:], "_"), func(t *testing.T) {
+			_ = captureStderr(t, func() {
+				err := Execute(args)
+				if err == nil || ExitCode(err) != 2 || !strings.Contains(err.Error(), "max must be > 0") {
+					t.Fatalf("unexpected err: %v", err)
+				}
+			})
+		})
+	}
+}

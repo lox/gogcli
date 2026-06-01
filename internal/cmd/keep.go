@@ -39,6 +39,9 @@ type KeepListCmd struct {
 
 func (c *KeepListCmd) Run(ctx context.Context, flags *RootFlags, keep *KeepCmd) error {
 	u := ui.FromContext(ctx)
+	if c.Max <= 0 {
+		return usage("max must be > 0")
+	}
 
 	svc, err := getKeepService(ctx, flags, keep)
 	if err != nil {
@@ -132,6 +135,9 @@ func (c *KeepSearchCmd) Run(ctx context.Context, flags *RootFlags, keep *KeepCmd
 
 	if strings.TrimSpace(c.Query) == "" {
 		return usage("search query cannot be empty")
+	}
+	if c.Max <= 0 {
+		return usage("max must be > 0")
 	}
 
 	svc, err := getKeepService(ctx, flags, keep)

@@ -32,6 +32,9 @@ type ContactsDirectoryListCmd struct {
 
 func (c *ContactsDirectoryListCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
+	if c.Max <= 0 {
+		return usage("max must be > 0")
+	}
 	account, err := requireAccount(flags)
 	if err != nil {
 		return err
@@ -127,11 +130,14 @@ type ContactsDirectorySearchCmd struct {
 
 func (c *ContactsDirectorySearchCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
+	query := strings.Join(c.Query, " ")
+	if c.Max <= 0 {
+		return usage("max must be > 0")
+	}
 	account, err := requireAccount(flags)
 	if err != nil {
 		return err
 	}
-	query := strings.Join(c.Query, " ")
 
 	svc, err := newPeopleDirectoryService(ctx, account)
 	if err != nil {
@@ -230,6 +236,9 @@ type ContactsOtherListCmd struct {
 
 func (c *ContactsOtherListCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
+	if c.Max <= 0 {
+		return usage("max must be > 0")
+	}
 	account, err := requireAccount(flags)
 	if err != nil {
 		return err
@@ -320,11 +329,14 @@ type ContactsOtherSearchCmd struct {
 
 func (c *ContactsOtherSearchCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
+	query := strings.Join(c.Query, " ")
+	if c.Max <= 0 {
+		return usage("max must be > 0")
+	}
 	account, err := requireAccount(flags)
 	if err != nil {
 		return err
 	}
-	query := strings.Join(c.Query, " ")
 
 	svc, err := newPeopleOtherContactsService(ctx, account)
 	if err != nil {
