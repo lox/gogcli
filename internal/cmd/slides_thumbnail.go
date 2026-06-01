@@ -120,7 +120,7 @@ func normalizeSlidesThumbnailSize(v string) (string, error) {
 	case "small":
 		return "SMALL", nil
 	default:
-		return "", fmt.Errorf("invalid thumbnail size %q (expected small, medium, or large)", v)
+		return "", usagef("invalid thumbnail size %q (expected small, medium, or large)", v)
 	}
 }
 
@@ -131,7 +131,7 @@ func normalizeSlidesThumbnailFormat(v string) (string, error) {
 	case "jpeg", "jpg":
 		return "JPEG", nil
 	default:
-		return "", fmt.Errorf("invalid thumbnail format %q (expected png or jpeg)", v)
+		return "", usagef("invalid thumbnail format %q (expected png or jpeg)", v)
 	}
 }
 

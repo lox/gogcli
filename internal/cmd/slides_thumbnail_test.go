@@ -257,6 +257,9 @@ func TestSlidesThumbnail_InvalidSize(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `invalid thumbnail size "giant"`) {
 		t.Fatalf("expected invalid size error, got: %v", err)
 	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode = %d, want 2 (err=%v)", got, err)
+	}
 }
 
 func TestSlidesThumbnail_InvalidFormat(t *testing.T) {
@@ -275,6 +278,9 @@ func TestSlidesThumbnail_InvalidFormat(t *testing.T) {
 	err := cmd.Run(ctx, flags)
 	if err == nil || !strings.Contains(err.Error(), `invalid thumbnail format "gif"`) {
 		t.Fatalf("expected invalid format error, got: %v", err)
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode = %d, want 2 (err=%v)", got, err)
 	}
 }
 
