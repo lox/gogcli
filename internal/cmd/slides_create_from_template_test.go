@@ -426,6 +426,9 @@ func TestSlidesCreateFromTemplate_InvalidReplaceFormat(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for invalid replace format, got nil")
 	}
+	if ExitCode(err) != 2 {
+		t.Errorf("Expected usage error (exit code 2), got: %v", err)
+	}
 }
 
 func TestSlidesCreateFromTemplate_InvalidJSON(t *testing.T) {
@@ -451,6 +454,9 @@ func TestSlidesCreateFromTemplate_InvalidJSON(t *testing.T) {
 	err := cmd.Run(ctx, &RootFlags{Account: "test@example.com"})
 	if err == nil {
 		t.Fatal("Expected error for invalid JSON, got nil")
+	}
+	if ExitCode(err) != 2 {
+		t.Errorf("Expected usage error (exit code 2), got: %v", err)
 	}
 }
 

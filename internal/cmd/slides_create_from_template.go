@@ -40,7 +40,7 @@ func (c *SlidesCreateFromTemplateCmd) Run(ctx context.Context, flags *RootFlags)
 	// Parse replacements from both sources
 	replacements, err := c.parseReplacements()
 	if err != nil {
-		return err
+		return newUsageError(err)
 	}
 
 	if len(replacements) == 0 {
