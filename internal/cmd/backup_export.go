@@ -249,7 +249,7 @@ func resetExportTargets(outDir string, shards []backup.ShardEntry) error {
 	for _, shard := range shards {
 		target := ""
 		switch {
-		case shard.Service == backupServiceGmail && shard.Kind == "messages":
+		case shard.Service == backupServiceGmail && shard.Kind == gmailBackupShardKindMessages:
 			target = filepath.Join(outDir, backupServiceGmail, sanitizeFilePart(shard.Account), "messages", "index.jsonl")
 		case shard.Service == backupServiceDrive && shard.Kind == "contents":
 			target = filepath.Join(outDir, backupServiceDrive, sanitizeFilePart(shard.Account), "files", "index.jsonl")
@@ -299,7 +299,7 @@ func exportPlainShard(outDir string, shard backup.PlainShard, opts backupExportO
 		return exportDriveContents(outDir, shard)
 	case shard.Service == backupServiceGmail && shard.Kind == "labels":
 		return exportGmailLabels(outDir, shard)
-	case shard.Service == backupServiceGmail && shard.Kind == "messages":
+	case shard.Service == backupServiceGmail && shard.Kind == gmailBackupShardKindMessages:
 		return exportGmailMessages(outDir, shard, opts)
 	default:
 		return exportRawShard(outDir, shard)
