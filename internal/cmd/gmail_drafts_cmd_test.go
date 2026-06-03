@@ -1530,6 +1530,7 @@ func TestGmailDraftsUpdateCmd_WithThreadIDOverridesExisting(t *testing.T) {
 						"id": "latest", "threadId": "t1", "internalDate": "2000",
 						"payload": map[string]any{"headers": []map[string]any{
 							{"name": "Message-ID", "value": "<latest@id>"},
+							{"name": "Subject", "value": "Original"},
 						}},
 					},
 				},
@@ -1566,7 +1567,7 @@ func TestGmailDraftsUpdateCmd_WithThreadIDOverridesExisting(t *testing.T) {
 
 	_ = captureStdout(t, func() {
 		if runErr := runKong(t, &GmailDraftsUpdateCmd{}, []string{
-			"d1", "--to", "a@example.com", "--subject", "Re: hi", "--body", "Hello", "--thread-id", "t1",
+			"d1", "--to", "a@example.com", "--body", "Hello", "--thread-id", "t1",
 		}, ctx, flags); runErr != nil {
 			t.Fatalf("execute: %v", runErr)
 		}
@@ -1584,5 +1585,8 @@ func TestGmailDraftsUpdateCmd_WithThreadIDOverridesExisting(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "In-Reply-To: <latest@id>") {
 		t.Fatalf("In-Reply-To not anchored to caller thread's latest message:\n%s", string(raw))
+	}
+	if !strings.Contains(string(raw), "Subject: Re: Original") {
+		t.Fatalf("subject not auto-filled from caller thread:\n%s", string(raw))
 	}
 }

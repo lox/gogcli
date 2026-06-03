@@ -565,7 +565,7 @@ func (c *GmailDraftsUpdateCmd) Run(ctx context.Context, flags *RootFlags) error 
 		Body:             body,
 		BodyHTML:         c.BodyHTML,
 		ReplyToMessageID: replyToMessageID,
-		ReplyToThreadID:  "",
+		ReplyToThreadID:  threadID,
 		ReplyTo:          c.ReplyTo,
 		Quote:            c.Quote,
 		Attach:           attachPaths,
