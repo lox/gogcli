@@ -123,11 +123,17 @@ gog sheets table clear "$spreadsheet_id" Tasks --dry-run --json
 
 ## Delete A Table
 
-Deleting removes the table object. Use `--force` for non-interactive runs:
+The Sheets API deletes both the table object and every cell in its range. There
+is no atomic API operation that removes only the table structure. To prevent
+accidental data loss, actual deletes require `--discard-data`:
 
 ```bash
-gog sheets table delete "$spreadsheet_id" "$table_id" --force
+gog sheets table delete "$spreadsheet_id" "$table_id" --discard-data --force
 ```
+
+Do not use this command when the range contents must be preserved. `--force`
+only skips the interactive confirmation; it does not replace
+`--discard-data`.
 
 Use `--dry-run` to preview the delete request without mutating the spreadsheet:
 

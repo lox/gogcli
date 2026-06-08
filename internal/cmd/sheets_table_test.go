@@ -229,7 +229,7 @@ func TestSheetsTableListGetDelete(t *testing.T) {
 	}
 
 	deleteOut := captureStdout(t, func() {
-		if err := (&SheetsTableDeleteCmd{SpreadsheetID: "s1", TableID: "tbl1"}).Run(newCmdJSONContext(t), &RootFlags{Account: "a@b.com", Force: true}); err != nil {
+		if err := (&SheetsTableDeleteCmd{SpreadsheetID: "s1", TableID: "tbl1", DiscardData: true}).Run(newCmdJSONContext(t), &RootFlags{Account: "a@b.com", Force: true}); err != nil {
 			t.Fatalf("delete table: %v", err)
 		}
 	})
@@ -238,6 +238,48 @@ func TestSheetsTableListGetDelete(t *testing.T) {
 	}
 	if !strings.Contains(deleteOut, `"tableId": "tbl1"`) {
 		t.Fatalf("missing delete output: %s", deleteOut)
+	}
+}
+
+func TestSheetsTableDeleteRequiresDiscardData(t *testing.T) {
+	err := (&SheetsTableDeleteCmd{
+		SpreadsheetID: "s1",
+		TableID:       "tbl1",
+	}).Run(newCmdJSONContext(t), &RootFlags{Force: true})
+	if err == nil {
+		t.Fatal("expected discard-data error")
+	}
+	if ExitCode(err) != 2 {
+		t.Fatalf("ExitCode = %d, want 2", ExitCode(err))
+	}
+	if !strings.Contains(err.Error(), "--discard-data") || !strings.Contains(err.Error(), "deletes every cell") {
+		t.Fatalf("error = %q", err.Error())
+	}
+}
+
+func TestSheetsTableDeleteDryRunDisclosesDataDeletion(t *testing.T) {
+	out := captureStdout(t, func() {
+		err := (&SheetsTableDeleteCmd{
+			SpreadsheetID: "s1",
+			TableID:       "tbl1",
+		}).Run(newCmdJSONContext(t), &RootFlags{DryRun: true})
+		if ExitCode(err) != 0 {
+			t.Fatalf("expected dry-run exit, got %v", err)
+		}
+	})
+
+	var payload struct {
+		Op      string         `json:"op"`
+		Request map[string]any `json:"request"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("decode dry-run output: %v", err)
+	}
+	if payload.Op != "sheets.table.delete" {
+		t.Fatalf("op = %q", payload.Op)
+	}
+	if payload.Request["discard_data"] != false || payload.Request["deletes_table_contents"] != true {
+		t.Fatalf("request = %#v", payload.Request)
 	}
 }
 

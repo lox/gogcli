@@ -525,7 +525,7 @@ Generated from `gog schema --json`.
       - [`gog sheets (sheet) table (tables) append (add-row,add-rows) <spreadsheetId> <tableId> [<values> ...] [flags]`](commands/gog-sheets-table-append.md) - Append rows to a table
       - [`gog sheets (sheet) table (tables) clear (clear-rows) <spreadsheetId> <tableId>`](commands/gog-sheets-table-clear.md) - Clear table data rows
       - [`gog sheets (sheet) table (tables) create (add,new) --name=STRING --columns-json=STRING <spreadsheetId> <range>`](commands/gog-sheets-table-create.md) - Create a table
-      - [`gog sheets (sheet) table (tables) delete (rm,remove,del) <spreadsheetId> <tableId>`](commands/gog-sheets-table-delete.md) - Delete a table
+      - [`gog sheets (sheet) table (tables) delete (rm,remove,del) <spreadsheetId> <tableId> [flags]`](commands/gog-sheets-table-delete.md) - Delete a table
       - [`gog sheets (sheet) table (tables) get (show,info) <spreadsheetId> <tableId>`](commands/gog-sheets-table-get.md) - Get a table
       - [`gog sheets (sheet) table (tables) list <spreadsheetId>`](commands/gog-sheets-table-list.md) - List tables in a spreadsheet
     - [`gog sheets (sheet) unmerge <spreadsheetId> <range>`](commands/gog-sheets-unmerge.md) - Unmerge cells in a range

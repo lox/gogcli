@@ -223,6 +223,7 @@ func (c *SheetsTableCreateCmd) Run(ctx context.Context, flags *RootFlags) error 
 type SheetsTableDeleteCmd struct {
 	SpreadsheetID string `arg:"" name:"spreadsheetId" help:"Spreadsheet ID"`
 	TableID       string `arg:"" name:"tableId" help:"Table ID or table name"`
+	DiscardData   bool   `name:"discard-data" help:"Delete the table and every cell in its range (required)"`
 }
 
 func (c *SheetsTableDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
@@ -237,10 +238,16 @@ func (c *SheetsTableDeleteCmd) Run(ctx context.Context, flags *RootFlags) error 
 	}
 
 	if dryRunErr := dryRunExit(ctx, flags, "sheets.table.delete", map[string]any{
-		"spreadsheet_id":   spreadsheetID,
-		"table_id_or_name": in,
+		"spreadsheet_id":         spreadsheetID,
+		"table_id_or_name":       in,
+		"discard_data":           c.DiscardData,
+		"deletes_table_contents": true,
 	}); dryRunErr != nil {
 		return dryRunErr
+	}
+
+	if !c.DiscardData {
+		return usage("sheets table delete also deletes every cell in the table range; pass --discard-data to confirm intentional data deletion")
 	}
 
 	account, err := requireAccount(flags)

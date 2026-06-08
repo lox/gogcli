@@ -7,7 +7,7 @@ Delete a table
 ## Usage
 
 ```bash
-gog sheets (sheet) table (tables) delete (rm,remove,del) <spreadsheetId> <tableId>
+gog sheets (sheet) table (tables) delete (rm,remove,del) <spreadsheetId> <tableId> [flags]
 ```
 
 ## Parent
@@ -23,6 +23,7 @@ gog sheets (sheet) table (tables) delete (rm,remove,del) <spreadsheetId> <tableI
 | `--client` | `string` |  | OAuth client name (selects stored credentials + token bucket) |
 | `--color` | `string` | auto | Color output: auto\|always\|never |
 | `--disable-commands` | `string` |  | Comma-separated list of disabled commands; dot paths allowed |
+| `--discard-data` | `bool` |  | Delete the table and every cell in its range (required) |
 | `-n`<br>`--dry-run`<br>`--dryrun`<br>`--noop`<br>`--preview` | `bool` |  | Do not make changes; print intended actions and exit successfully |
 | `--enable-commands` | `string` |  | Comma-separated list of enabled command prefixes; dot paths allowed (restricts CLI) |
 | `--enable-commands-exact` | `string` |  | Comma-separated list of exact enabled commands; dot paths allowed and parent commands do not enable children |

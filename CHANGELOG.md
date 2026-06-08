@@ -12,6 +12,10 @@
 - Sheets: add `sheets links set` to write single-cell, multi-link rich-text, and batch hyperlinks. (#713) — thanks @chrischall.
 - Slides: add `slides insert-image` to place a positioned, sized local image on an existing slide. (#695) — thanks @Czaruno.
 
+### Fixed
+
+- Sheets: prevent accidental table data loss by requiring explicit `--discard-data` for `sheets table delete`, matching the Sheets API's destructive table-delete semantics. (#709) — thanks @chrischall.
+
 ## 0.22.0 - 2026-06-07
 
 ### Added
