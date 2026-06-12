@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/steipete/gogcli/internal/app"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/googleauth"
 	"github.com/steipete/gogcli/internal/secrets"
@@ -696,201 +697,91 @@ func TestAuthAddCmd_SheetsDriveScopeFile(t *testing.T) {
 }
 
 func TestAuthAddCmd_RemoteStep1_PrintsAuthURL(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
 	manualCalled := false
-	manualAuthURL = func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail",
+		"--readonly",
+		"--remote", "--step", "1",
+	}, func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
 		manualCalled = true
-		return googleauth.ManualAuthURLResult{
-			URL:         "https://example.com/auth",
-			StateReused: true,
-		}, nil
-	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	var stderr string
-	out := captureStdout(t, func() {
-		stderr = captureStderr(t, func() {
-			if err := Execute([]string{
-				"auth",
-				"add",
-				"user@example.com",
-				"--services",
-				"gmail",
-				"--readonly",
-				"--remote",
-				"--step",
-				"1",
-			}); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-		})
+		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth", StateReused: true}, nil
 	})
-
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
+	}
 	if !manualCalled {
-		t.Fatalf("expected manualAuthURL to be called")
+		t.Fatalf("expected manual auth URL operation to be called")
 	}
-	if !strings.Contains(out, "auth_url\thttps://example.com/auth") {
-		t.Fatalf("unexpected output: %q", out)
+	if !strings.Contains(result.stdout, "auth_url\thttps://example.com/auth") {
+		t.Fatalf("unexpected output: %q", result.stdout)
 	}
-	if !strings.Contains(out, "state_reused\ttrue") {
-		t.Fatalf("expected state_reused output, got: %q", out)
+	if !strings.Contains(result.stdout, "state_reused\ttrue") {
+		t.Fatalf("expected state_reused output, got: %q", result.stdout)
 	}
-	if !strings.Contains(stderr, "Run again with the same root flags and --remote --step 2 --auth-url <redirect-url> --services gmail --readonly") {
-		t.Fatalf("expected step 2 guidance to preserve replay flags, got: %q", stderr)
+	if !strings.Contains(result.stderr, "Run again with the same root flags and --remote --step 2 --auth-url <redirect-url> --services gmail --readonly") {
+		t.Fatalf("expected step 2 guidance to preserve replay flags, got: %q", result.stderr)
 	}
 }
 
 func TestAuthAddCmd_RemoteStep1_PreservesAllReplayFlags(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
-	manualAuthURL = func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
-		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail,drive",
+		"--remote", "--step", "1",
+		"--drive-scope", "file",
+		"--gmail-scope", "readonly",
+		"--force-consent",
+	}, fixedManualAuthURL)
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	stderr := captureStderr(t, func() {
-		_ = captureStdout(t, func() {
-			if err := Execute([]string{
-				"auth",
-				"add",
-				"user@example.com",
-				"--services",
-				"gmail,drive",
-				"--remote",
-				"--step",
-				"1",
-				"--drive-scope",
-				"file",
-				"--gmail-scope",
-				"readonly",
-				"--force-consent",
-			}); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-		})
-	})
 
 	want := "Run again with the same root flags and --remote --step 2 --auth-url <redirect-url> --services gmail,drive --drive-scope file --gmail-scope readonly --force-consent"
-	if !strings.Contains(stderr, want) {
-		t.Fatalf("expected replay guidance %q, got %q", want, stderr)
+	if !strings.Contains(result.stderr, want) {
+		t.Fatalf("expected replay guidance %q, got %q", want, result.stderr)
 	}
 }
 
 func TestAuthAddCmd_RemoteStep1_OmitsDefaultScopeFlags(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
-	manualAuthURL = func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
-		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
-	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail,drive",
+		"--remote", "--step", "1",
+	}, fixedManualAuthURL)
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
 
-	stderr := captureStderr(t, func() {
-		_ = captureStdout(t, func() {
-			if err := Execute([]string{
-				"auth",
-				"add",
-				"user@example.com",
-				"--services",
-				"gmail,drive",
-				"--remote",
-				"--step",
-				"1",
-			}); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-		})
-	})
-
-	if strings.Contains(stderr, "--drive-scope full") {
-		t.Fatalf("expected default drive scope to be omitted, got %q", stderr)
+	if strings.Contains(result.stderr, "--drive-scope full") {
+		t.Fatalf("expected default drive scope to be omitted, got %q", result.stderr)
 	}
-	if strings.Contains(stderr, "--gmail-scope full") {
-		t.Fatalf("expected default gmail scope to be omitted, got %q", stderr)
+	if strings.Contains(result.stderr, "--gmail-scope full") {
+		t.Fatalf("expected default gmail scope to be omitted, got %q", result.stderr)
 	}
 }
 
 func TestAuthAddCmd_RemoteStep1_PassesRedirectURI(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
 	var gotOpts googleauth.AuthorizeOptions
-	manualAuthURL = func(_ context.Context, opts googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail",
+		"--remote", "--step", "1",
+		"--redirect-uri", "https://molty2.tail8108.ts.net/oauth2/callback",
+	}, func(_ context.Context, opts googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
 		gotOpts = opts
-		return googleauth.ManualAuthURLResult{
-			URL: "https://example.com/auth",
-		}, nil
-	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	if err := Execute([]string{
-		"auth",
-		"add",
-		"user@example.com",
-		"--services",
-		"gmail",
-		"--remote",
-		"--step",
-		"1",
-		"--redirect-uri",
-		"https://molty2.tail8108.ts.net/oauth2/callback",
-	}); err != nil {
-		t.Fatalf("Execute: %v", err)
+		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
+	})
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
 
 	if gotOpts.RedirectURI != "https://molty2.tail8108.ts.net/oauth2/callback" {
@@ -899,88 +790,73 @@ func TestAuthAddCmd_RemoteStep1_PassesRedirectURI(t *testing.T) {
 }
 
 func TestAuthAddCmd_RemoteStep1_ReplaysRedirectURIInGuidance(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
-	manualAuthURL = func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
-		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail",
+		"--remote", "--step", "1",
+		"--redirect-uri", "https://molty2.tail8108.ts.net/oauth2/callback",
+	}, fixedManualAuthURL)
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	stderr := captureStderr(t, func() {
-		_ = captureStdout(t, func() {
-			if err := Execute([]string{
-				"auth",
-				"add",
-				"user@example.com",
-				"--services",
-				"gmail",
-				"--remote",
-				"--step",
-				"1",
-				"--redirect-uri",
-				"https://molty2.tail8108.ts.net/oauth2/callback",
-			}); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-		})
-	})
 
 	want := "--remote --step 2 --auth-url <redirect-url> --redirect-uri https://molty2.tail8108.ts.net/oauth2/callback --services gmail"
-	if !strings.Contains(stderr, want) {
-		t.Fatalf("expected replay guidance %q, got %q", want, stderr)
+	if !strings.Contains(result.stderr, want) {
+		t.Fatalf("expected replay guidance %q, got %q", want, result.stderr)
 	}
 }
 
 func TestAuthAddCmd_RemoteStep1_PassesRedirectHostAsRedirectURI(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
 	var gotOpts googleauth.AuthorizeOptions
-	manualAuthURL = func(_ context.Context, opts googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
-		gotOpts = opts
-		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
-	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	if err := Execute([]string{
+	result := executeWithManualAuthURL(t, []string{
 		"auth", "add", "user@example.com",
 		"--services", "gmail",
 		"--remote", "--step", "1",
 		"--redirect-host", "gog.example.com",
-	}); err != nil {
-		t.Fatalf("Execute: %v", err)
+	}, func(_ context.Context, opts googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
+		gotOpts = opts
+		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
+	})
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
 
 	if gotOpts.RedirectURI != "https://gog.example.com/oauth2/callback" {
 		t.Fatalf("unexpected redirect uri: %q", gotOpts.RedirectURI)
 	}
+}
+
+func restoreRemoteStep1Guards(t *testing.T) {
+	t.Helper()
+	origAuth := authorizeGoogle
+	origKeychain := ensureKeychainAccess
+	t.Cleanup(func() {
+		authorizeGoogle = origAuth
+		ensureKeychainAccess = origKeychain
+	})
+	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
+		t.Fatal("authorizeGoogle should not be called in remote step 1")
+		return "", nil
+	}
+	ensureKeychainAccess = func() error {
+		t.Fatal("keychain access should not be checked in remote step 1")
+		return nil
+	}
+}
+
+func executeWithManualAuthURL(t *testing.T, args []string, manualURL app.ManualAuthURLFunc) executeTestResult {
+	t.Helper()
+	return executeWithTestRuntime(t, args, &app.Runtime{
+		Auth: app.AuthOperations{ManualAuthURL: manualURL},
+	})
+}
+
+func fixedManualAuthURL(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
+	return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
 }
 
 func TestAuthAddCmd_BrowserFlow_PassesListenAddrAndRedirectHost(t *testing.T) {
@@ -1028,49 +904,21 @@ func TestAuthAddCmd_BrowserFlow_PassesListenAddrAndRedirectHost(t *testing.T) {
 }
 
 func TestAuthAddCmd_RemoteStep1_ReplaysExtraScopesInGuidance(t *testing.T) {
-	origManualURL := manualAuthURL
-	origAuth := authorizeGoogle
-	origKeychain := ensureKeychainAccess
-	t.Cleanup(func() {
-		manualAuthURL = origManualURL
-		authorizeGoogle = origAuth
-		ensureKeychainAccess = origKeychain
-	})
+	restoreRemoteStep1Guards(t)
 
-	manualAuthURL = func(context.Context, googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
-		return googleauth.ManualAuthURLResult{URL: "https://example.com/auth"}, nil
+	result := executeWithManualAuthURL(t, []string{
+		"auth", "add", "user@example.com",
+		"--services", "gmail",
+		"--remote", "--step", "1",
+		"--extra-scopes", "https://www.googleapis.com/auth/gmail.labels, https://www.googleapis.com/auth/gmail.insert",
+	}, fixedManualAuthURL)
+	if result.err != nil {
+		t.Fatalf("Execute: %v", result.err)
 	}
-	authorizeGoogle = func(context.Context, googleauth.AuthorizeOptions) (string, error) {
-		t.Fatal("authorizeGoogle should not be called in remote step 1")
-		return "", nil
-	}
-	ensureKeychainAccess = func() error {
-		t.Fatal("keychain access should not be checked in remote step 1")
-		return nil
-	}
-
-	stderr := captureStderr(t, func() {
-		_ = captureStdout(t, func() {
-			if err := Execute([]string{
-				"auth",
-				"add",
-				"user@example.com",
-				"--services",
-				"gmail",
-				"--remote",
-				"--step",
-				"1",
-				"--extra-scopes",
-				"https://www.googleapis.com/auth/gmail.labels, https://www.googleapis.com/auth/gmail.insert",
-			}); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-		})
-	})
 
 	want := "--remote --step 2 --auth-url <redirect-url> --services gmail --extra-scopes https://www.googleapis.com/auth/gmail.labels,https://www.googleapis.com/auth/gmail.insert"
-	if !strings.Contains(stderr, want) {
-		t.Fatalf("expected replay guidance %q, got %q", want, stderr)
+	if !strings.Contains(result.stderr, want) {
+		t.Fatalf("expected replay guidance %q, got %q", want, result.stderr)
 	}
 }
 

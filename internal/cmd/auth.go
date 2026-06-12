@@ -13,7 +13,6 @@ var (
 	authorizeGoogle         = googleauth.Authorize
 	ensureKeychainAccess    = secrets.EnsureKeychainAccess
 	fetchAuthorizedIdentity = googleauth.IdentityForRefreshToken
-	manualAuthURL           = googleauth.ManualAuthURL
 )
 
 func ensureKeychainAccessIfNeeded() error {

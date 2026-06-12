@@ -164,7 +164,7 @@ func (c *AuthAddCmd) Run(ctx context.Context, flags *RootFlags) error {
 			if authURL != "" || authCode != "" {
 				return usage("remote step 1 does not accept --auth-url or --auth-code")
 			}
-			result, manualErr := manualAuthURL(ctx, googleauth.AuthorizeOptions{
+			result, manualErr := buildManualAuthURL(ctx, googleauth.AuthorizeOptions{
 				Services:                    services,
 				Scopes:                      scopes,
 				Manual:                      true,

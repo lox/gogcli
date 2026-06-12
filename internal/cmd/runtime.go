@@ -285,6 +285,13 @@ func checkAuthRefreshToken(ctx context.Context, client, refreshToken string, sco
 	return googleauth.CheckRefreshToken(ctx, client, refreshToken, scopes, timeout)
 }
 
+func buildManualAuthURL(ctx context.Context, options googleauth.AuthorizeOptions) (googleauth.ManualAuthURLResult, error) {
+	if runtime, ok := app.FromContext(ctx); ok && runtime.Auth.ManualAuthURL != nil {
+		return runtime.Auth.ManualAuthURL(ctx, options)
+	}
+	return googleauth.ManualAuthURL(ctx, options)
+}
+
 func adminDirectoryService(ctx context.Context, account string) (*admin.Service, error) {
 	if runtime, ok := app.FromContext(ctx); ok && runtime.Services.AdminDirectory != nil {
 		return runtime.Services.AdminDirectory(ctx, account)
