@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"google.golang.org/api/chat/v1"
@@ -77,7 +76,7 @@ func (c *ChatMessagesReactionsCreateCmd) Run(ctx context.Context, flags *RootFla
 	}
 
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"reaction": resp})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"reaction": resp})
 	}
 
 	u.Out().Linef("resource\t%s", resp.Name)
@@ -152,7 +151,7 @@ func (c *ChatMessagesReactionsListCmd) Run(ctx context.Context, flags *RootFlags
 				User:     reactionUser(r),
 			})
 		}
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
 			"reactions":     items,
 			"nextPageToken": nextPageToken,
 		})
@@ -217,7 +216,7 @@ func (c *ChatMessagesReactionsDeleteCmd) Run(ctx context.Context, flags *RootFla
 	}
 
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"deleted": reaction})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"deleted": reaction})
 	}
 
 	u.Out().Linef("deleted\t%s", reaction)

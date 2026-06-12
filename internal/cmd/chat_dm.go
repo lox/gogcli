@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"google.golang.org/api/chat/v1"
@@ -93,7 +92,7 @@ func (c *ChatDMSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}
 
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"message": resp})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"message": resp})
 	}
 
 	if resp == nil {
@@ -151,7 +150,7 @@ func (c *ChatDMSpaceCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}
 
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"space": space})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"space": space})
 	}
 	if space.Name != "" {
 		u.Out().Linef("resource\t%s", space.Name)
