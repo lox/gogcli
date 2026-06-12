@@ -489,57 +489,22 @@ type TasksUpdateCmd struct {
 
 func (c *TasksUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
-	tasklistID := strings.TrimSpace(c.TasklistID)
-	taskID := strings.TrimSpace(c.TaskID)
-	if tasklistID == "" {
-		return usage("empty tasklistId")
+	plan, err := newTasksUpdatePlan(tasksUpdateInput{
+		TasklistID: c.TasklistID,
+		TaskID:     c.TaskID,
+		Title:      c.Title,
+		Notes:      c.Notes,
+		Due:        c.Due,
+		Status:     c.Status,
+	}, tasksUpdateFieldsFromContext(kctx))
+	if err != nil {
+		return err
 	}
-	if taskID == "" {
-		return usage("empty taskId")
-	}
-
-	patch := &tasks.Task{}
-	changed := false
-	if flagProvided(kctx, "title") {
-		patch.Title = strings.TrimSpace(c.Title)
-		changed = true
-	}
-	if flagProvided(kctx, "notes") {
-		patch.Notes = strings.TrimSpace(c.Notes)
-		changed = true
-	}
-	if flagProvided(kctx, "due") {
-		dueValue, dueErr := normalizeTaskDue(c.Due)
-		if dueErr != nil {
-			return dueErr
-		}
-		if dueValue == "" {
-			patch.NullFields = append(patch.NullFields, "Due")
-		} else {
-			if !outfmt.IsJSON(ctx) {
-				warnTasksDueTime(u, c.Due)
-			}
-			patch.Due = dueValue
-		}
-		changed = true
-	}
-	if flagProvided(kctx, "status") {
-		patch.Status = strings.TrimSpace(c.Status)
-		changed = true
-	}
-	if !changed {
-		return usage("no fields to update (set at least one of: --title, --notes, --due, --status)")
+	if plan.WarnDue != "" && !outfmt.IsJSON(ctx) {
+		warnTasksDueTime(u, plan.WarnDue)
 	}
 
-	if flagProvided(kctx, "status") && patch.Status != "" && patch.Status != taskStatusNeedsAction && patch.Status != taskStatusCompleted {
-		return usage("invalid --status (expected needsAction or completed)")
-	}
-
-	if dryRunErr := dryRunExit(ctx, flags, "tasks.update", map[string]any{
-		"tasklist_id": tasklistID,
-		"task_id":     taskID,
-		"patch":       patch,
-	}); dryRunErr != nil {
+	if dryRunErr := dryRunExit(ctx, flags, "tasks.update", plan.dryRunPayload()); dryRunErr != nil {
 		return dryRunErr
 	}
 
@@ -552,12 +517,12 @@ func (c *TasksUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *Roo
 	if err != nil {
 		return err
 	}
-	tasklistID, err = resolveTasklistID(ctx, svc, tasklistID)
+	plan.TasklistID, err = resolveTasklistID(ctx, svc, plan.TasklistID)
 	if err != nil {
 		return err
 	}
 
-	updated, err := svc.Tasks.Patch(tasklistID, taskID, patch).Do()
+	updated, err := svc.Tasks.Patch(plan.TasklistID, plan.TaskID, plan.Patch).Do()
 	if err != nil {
 		return err
 	}
