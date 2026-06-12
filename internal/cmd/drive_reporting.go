@@ -65,36 +65,8 @@ func (c *DriveTreeCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	if outfmt.IsPlain(ctx) {
-		fmt.Fprintln(w, "PATH\tTYPE\tSIZE\tMODIFIED\tID")
-	} else {
-		fmt.Fprintln(w, "PATH\tTYPE\tSIZE\tMODIFIED\tID\tTARGET_ID")
-	}
-	for _, it := range items {
-		if outfmt.IsPlain(ctx) {
-			fmt.Fprintf(
-				w,
-				"%s\t%s\t%s\t%s\t%s\n",
-				sanitizeTab(it.Path),
-				driveType(it.MimeType),
-				formatDriveSize(it.Size),
-				formatDateTime(it.ModifiedTime),
-				it.ID,
-			)
-		} else {
-			fmt.Fprintf(
-				w,
-				"%s\t%s\t%s\t%s\t%s\t%s\n",
-				sanitizeTab(it.Path),
-				driveType(it.MimeType),
-				formatDriveSize(it.Size),
-				formatDateTime(it.ModifiedTime),
-				it.ID,
-				driveShortcutDetailsTargetID(it.ShortcutDetails),
-			)
-		}
+	if err := outfmt.WriteTable(ctx, stdoutWriter(ctx), items, driveTreeColumns(outfmt.IsPlain(ctx))); err != nil {
+		return err
 	}
 	if truncated {
 		u.Err().Println("Results truncated; increase --max to see more.")
@@ -156,42 +128,8 @@ func (c *DriveInventoryCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	if outfmt.IsPlain(ctx) {
-		fmt.Fprintln(w, "PATH\tTYPE\tSIZE\tMODIFIED\tOWNER\tID")
-	} else {
-		fmt.Fprintln(w, "PATH\tTYPE\tSIZE\tMODIFIED\tOWNER\tID\tTARGET_ID")
-	}
-	for _, it := range items {
-		owner := "-"
-		if len(it.Owners) > 0 {
-			owner = it.Owners[0]
-		}
-		if outfmt.IsPlain(ctx) {
-			fmt.Fprintf(
-				w,
-				"%s\t%s\t%s\t%s\t%s\t%s\n",
-				sanitizeTab(it.Path),
-				driveType(it.MimeType),
-				formatDriveSize(it.Size),
-				formatDateTime(it.ModifiedTime),
-				owner,
-				it.ID,
-			)
-		} else {
-			fmt.Fprintf(
-				w,
-				"%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				sanitizeTab(it.Path),
-				driveType(it.MimeType),
-				formatDriveSize(it.Size),
-				formatDateTime(it.ModifiedTime),
-				owner,
-				it.ID,
-				driveShortcutDetailsTargetID(it.ShortcutDetails),
-			)
-		}
+	if err := outfmt.WriteTable(ctx, stdoutWriter(ctx), items, driveInventoryColumns(outfmt.IsPlain(ctx))); err != nil {
+		return err
 	}
 	if truncated {
 		u.Err().Println("Results truncated; increase --max to see more.")
@@ -260,13 +198,7 @@ func (c *DriveDuCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "PATH\tSIZE\tFILES")
-	for _, f := range summaries {
-		fmt.Fprintf(w, "%s\t%s\t%d\n", sanitizeTab(f.Path), formatDriveSize(f.Size), f.Files)
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), summaries, driveDuColumns())
 }
 
 type driveTreeItem struct {
