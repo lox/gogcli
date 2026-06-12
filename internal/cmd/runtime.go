@@ -30,7 +30,7 @@ func newDefaultRuntime() *app.Runtime {
 		},
 		Services: app.Services{
 			Calendar:      googleapi.NewCalendar,
-			Classroom:     newClassroomService,
+			Classroom:     googleapi.NewClassroom,
 			CloudIdentity: newCloudIdentityService,
 			Docs:          googleapi.NewDocs,
 			DocsHTTP: func(ctx context.Context, account string) (*http.Client, error) {
@@ -144,7 +144,7 @@ func classroomService(ctx context.Context, account string) (*classroom.Service, 
 	if runtime, ok := app.FromContext(ctx); ok && runtime.Services.Classroom != nil {
 		return runtime.Services.Classroom(ctx, account)
 	}
-	return newClassroomService(ctx, account)
+	return googleapi.NewClassroom(ctx, account)
 }
 
 func cloudIdentityService(ctx context.Context, account string) (*cloudidentity.Service, error) {
