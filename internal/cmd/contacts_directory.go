@@ -40,7 +40,7 @@ func (c *ContactsDirectoryListCmd) Run(ctx context.Context, flags *RootFlags) er
 		return err
 	}
 
-	svc, err := newPeopleDirectoryService(ctx, account)
+	svc, err := peopleDirectoryService(ctx, account)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func (c *ContactsDirectorySearchCmd) Run(ctx context.Context, flags *RootFlags) 
 		return err
 	}
 
-	svc, err := newPeopleDirectoryService(ctx, account)
+	svc, err := peopleDirectoryService(ctx, account)
 	if err != nil {
 		return err
 	}

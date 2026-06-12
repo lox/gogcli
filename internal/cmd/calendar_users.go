@@ -32,7 +32,7 @@ func (c *CalendarUsersCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
-	svc, err := newPeopleDirectoryService(ctx, account)
+	svc, err := peopleDirectoryService(ctx, account)
 	if err != nil {
 		if strings.Contains(err.Error(), "accessNotConfigured") ||
 			strings.Contains(err.Error(), "People API has not been used") {

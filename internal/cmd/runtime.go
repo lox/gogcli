@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/cloudidentity/v1"
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/gmail/v1"
@@ -27,18 +28,20 @@ func newDefaultRuntime() *app.Runtime {
 			Err: os.Stderr,
 		},
 		Services: app.Services{
-			Calendar: newCalendarService,
-			Docs:     googleapi.NewDocs,
+			Calendar:      newCalendarService,
+			CloudIdentity: newCloudIdentityService,
+			Docs:          googleapi.NewDocs,
 			DocsHTTP: func(ctx context.Context, account string) (*http.Client, error) {
 				return googleapi.NewHTTPClient(ctx, googleauth.ServiceDocs, account)
 			},
-			Drive:          googleapi.NewDrive,
-			Gmail:          googleapi.NewGmail,
-			PeopleContacts: newPeopleContactsService,
-			Sheets:         googleapi.NewSheets,
-			Slides:         googleapi.NewSlides,
-			DriveDownload:  driveDownload,
-			DriveExport:    driveExportDownload,
+			Drive:           googleapi.NewDrive,
+			Gmail:           googleapi.NewGmail,
+			PeopleContacts:  newPeopleContactsService,
+			PeopleDirectory: newPeopleDirectoryService,
+			Sheets:          googleapi.NewSheets,
+			Slides:          googleapi.NewSlides,
+			DriveDownload:   driveDownload,
+			DriveExport:     driveExportDownload,
 		},
 	}
 }
@@ -61,6 +64,9 @@ func normalizedRuntime(runtime *app.Runtime) *app.Runtime {
 	if normalized.Services.Calendar == nil {
 		normalized.Services.Calendar = defaults.Services.Calendar
 	}
+	if normalized.Services.CloudIdentity == nil {
+		normalized.Services.CloudIdentity = defaults.Services.CloudIdentity
+	}
 	if normalized.Services.Drive == nil {
 		normalized.Services.Drive = defaults.Services.Drive
 	}
@@ -75,6 +81,9 @@ func normalizedRuntime(runtime *app.Runtime) *app.Runtime {
 	}
 	if normalized.Services.PeopleContacts == nil {
 		normalized.Services.PeopleContacts = defaults.Services.PeopleContacts
+	}
+	if normalized.Services.PeopleDirectory == nil {
+		normalized.Services.PeopleDirectory = defaults.Services.PeopleDirectory
 	}
 	if normalized.Services.Sheets == nil {
 		normalized.Services.Sheets = defaults.Services.Sheets
@@ -118,6 +127,13 @@ func calendarService(ctx context.Context, account string) (*calendar.Service, er
 	return newCalendarService(ctx, account)
 }
 
+func cloudIdentityService(ctx context.Context, account string) (*cloudidentity.Service, error) {
+	if runtime, ok := app.FromContext(ctx); ok && runtime.Services.CloudIdentity != nil {
+		return runtime.Services.CloudIdentity(ctx, account)
+	}
+	return newCloudIdentityService(ctx, account)
+}
+
 func driveService(ctx context.Context, account string) (*drive.Service, error) {
 	if runtime, ok := app.FromContext(ctx); ok && runtime.Services.Drive != nil {
 		return runtime.Services.Drive(ctx, account)
@@ -155,6 +171,13 @@ func peopleContactsService(ctx context.Context, account string) (*people.Service
 		return runtime.Services.PeopleContacts(ctx, account)
 	}
 	return newPeopleContactsService(ctx, account)
+}
+
+func peopleDirectoryService(ctx context.Context, account string) (*people.Service, error) {
+	if runtime, ok := app.FromContext(ctx); ok && runtime.Services.PeopleDirectory != nil {
+		return runtime.Services.PeopleDirectory(ctx, account)
+	}
+	return newPeopleDirectoryService(ctx, account)
 }
 
 func sheetsService(ctx context.Context, account string) (*sheets.Service, error) {

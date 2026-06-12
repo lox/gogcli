@@ -48,7 +48,7 @@ func (c *GroupsListCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
-	svc, err := newCloudIdentityService(ctx, account)
+	svc, err := cloudIdentityService(ctx, account)
 	if err != nil {
 		return wrapCloudIdentityError(err, account)
 	}
@@ -187,7 +187,7 @@ func (c *GroupsMembersCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
-	svc, err := newCloudIdentityService(ctx, account)
+	svc, err := cloudIdentityService(ctx, account)
 	if err != nil {
 		return wrapCloudIdentityError(err, account)
 	}

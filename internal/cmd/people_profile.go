@@ -87,7 +87,7 @@ func (c *PeopleSearchCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
-	svc, err := newPeopleDirectoryService(ctx, account)
+	svc, err := peopleDirectoryService(ctx, account)
 	if err != nil {
 		return wrapPeopleAPIError(err)
 	}
@@ -252,5 +252,5 @@ func peopleServiceForResource(ctx context.Context, account string, resource stri
 	if resource == peopleMeResource {
 		return peopleContactsService(ctx, account)
 	}
-	return newPeopleDirectoryService(ctx, account)
+	return peopleDirectoryService(ctx, account)
 }

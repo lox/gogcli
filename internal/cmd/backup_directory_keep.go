@@ -30,7 +30,7 @@ func buildGroupsBackupSnapshot(ctx context.Context, flags *RootFlags, shardMaxRo
 	if err != nil {
 		return backup.Snapshot{}, err
 	}
-	svc, err := newCloudIdentityService(ctx, account)
+	svc, err := cloudIdentityService(ctx, account)
 	if err != nil {
 		return backup.Snapshot{}, wrapCloudIdentityError(err, account)
 	}
