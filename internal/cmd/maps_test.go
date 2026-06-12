@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,11 +33,14 @@ func TestMapsPlacesSearch(t *testing.T) {
 	t.Setenv("GOG_PLACES_API_KEY", "test-key")
 	t.Setenv("GOG_PLACES_BASE_URL", srv.URL)
 
-	out := captureStdout(t, func() {
-		if err := (&MapsPlacesSearchCmd{Query: []string{"cafe"}}).Run(newCmdJSONContext(t), &RootFlags{}); err != nil {
-			t.Fatalf("Run: %v", err)
-		}
-	})
+	var stdout bytes.Buffer
+	if err := (&MapsPlacesSearchCmd{Query: []string{"cafe"}}).Run(
+		newCmdRuntimeJSONOutputContext(t, &stdout, io.Discard),
+		&RootFlags{},
+	); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := stdout.String()
 	if !strings.Contains(out, "ChIJ123") || !strings.Contains(out, "Cafe") || !strings.Contains(out, "maps.example") {
 		t.Fatalf("unexpected output: %s", out)
 	}
@@ -68,12 +73,15 @@ func TestMapsDirections(t *testing.T) {
 	t.Setenv("GOG_PLACES_API_KEY", "test-key")
 	t.Setenv("GOG_MAPS_BASE_URL", srv.URL)
 
-	out := captureStdout(t, func() {
-		err := (&MapsDirectionsCmd{Origin: "Barcelona", Destination: "Blanes"}).Run(newCmdJSONContext(t), &RootFlags{})
-		if err != nil {
-			t.Fatalf("Run: %v", err)
-		}
-	})
+	var stdout bytes.Buffer
+	err := (&MapsDirectionsCmd{Origin: "Barcelona", Destination: "Blanes"}).Run(
+		newCmdRuntimeJSONOutputContext(t, &stdout, io.Discard),
+		&RootFlags{},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := stdout.String()
 	if !strings.Contains(out, "C-32") || !strings.Contains(out, "70 km") {
 		t.Fatalf("unexpected output: %s", out)
 	}
@@ -151,12 +159,15 @@ func TestMapsGeocode(t *testing.T) {
 	t.Setenv("GOG_PLACES_API_KEY", "test-key")
 	t.Setenv("GOG_MAPS_BASE_URL", srv.URL)
 
-	out := captureStdout(t, func() {
-		err := (&MapsGeocodeCmd{Address: []string{"Carrer", "Major,", "Blanes"}}).Run(newCmdJSONContext(t), &RootFlags{})
-		if err != nil {
-			t.Fatalf("Run: %v", err)
-		}
-	})
+	var stdout bytes.Buffer
+	err := (&MapsGeocodeCmd{Address: []string{"Carrer", "Major,", "Blanes"}}).Run(
+		newCmdRuntimeJSONOutputContext(t, &stdout, io.Discard),
+		&RootFlags{},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := stdout.String()
 	if !strings.Contains(out, "place-1") || !strings.Contains(out, "41.674") {
 		t.Fatalf("unexpected output: %s", out)
 	}

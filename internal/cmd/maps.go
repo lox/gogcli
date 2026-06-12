@@ -271,7 +271,7 @@ func normalizeMapsLatLng(rawLat string, rawLng string) (string, string, error) {
 func writeMapsPlace(ctx context.Context, place *googleapi.Place) error {
 	u := ui.FromContext(ctx)
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"place": place})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"place": place})
 	}
 	if place == nil {
 		u.Err().Println("No place")
@@ -293,7 +293,7 @@ func writeMapsPlace(ctx context.Context, place *googleapi.Place) error {
 func writeMapsDirections(ctx context.Context, resp *googleapi.MapsDirectionsResponse) error {
 	u := ui.FromContext(ctx)
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"directions": resp})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"directions": resp})
 	}
 	if resp == nil || len(resp.Routes) == 0 {
 		u.Err().Println("No routes")
@@ -313,7 +313,7 @@ func writeMapsDirections(ctx context.Context, resp *googleapi.MapsDirectionsResp
 func writeMapsDistance(ctx context.Context, resp *googleapi.MapsDistanceMatrixResponse) error {
 	u := ui.FromContext(ctx)
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"distanceMatrix": resp})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"distanceMatrix": resp})
 	}
 	if resp == nil || len(resp.Rows) == 0 {
 		u.Err().Println("No distances")
@@ -334,7 +334,7 @@ func writeMapsDistance(ctx context.Context, resp *googleapi.MapsDistanceMatrixRe
 func writeMapsGeocode(ctx context.Context, resp *googleapi.MapsGeocodeResponse) error {
 	u := ui.FromContext(ctx)
 	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, os.Stdout, map[string]any{"geocode": resp})
+		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"geocode": resp})
 	}
 	if resp == nil || len(resp.Results) == 0 {
 		u.Err().Println("No geocode results")
