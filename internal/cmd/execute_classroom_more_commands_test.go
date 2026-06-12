@@ -14,9 +14,6 @@ import (
 )
 
 func TestExecute_ClassroomMoreCommands_JSON(t *testing.T) {
-	origNew := newClassroomService
-	t.Cleanup(func() { newClassroomService = origNew })
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON := func(data any) {
 			w.Header().Set("Content-Type", "application/json")
@@ -412,154 +409,142 @@ func TestExecute_ClassroomMoreCommands_JSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
-	newClassroomService = func(context.Context, string) (*classroom.Service, error) { return svc, nil }
 
-	runJSON := func(args ...string) {
+	runJSON := func(args ...string) executeTestResult {
 		t.Helper()
 		full := append([]string{"--json", "--account", "a@b.com"}, args...)
-		if err := Execute(full); err != nil {
-			t.Fatalf("execute %v: %v", args, err)
+		result := executeWithClassroomTestService(t, full, svc)
+		if result.err != nil {
+			t.Fatalf("execute %v: %v", args, result.err)
 		}
+		return result
 	}
 
 	runJSONForce := func(args ...string) {
 		t.Helper()
 		full := append([]string{"--json", "--force", "--account", "a@b.com"}, args...)
-		if err := Execute(full); err != nil {
-			t.Fatalf("execute %v: %v", args, err)
+		result := executeWithClassroomTestService(t, full, svc)
+		if result.err != nil {
+			t.Fatalf("execute %v: %v", args, result.err)
 		}
 	}
 
-	_ = captureStderr(t, func() {
-		runJSON("classroom", "courses", "--state", "active,archived", "--teacher", "t1", "--student", "s1", "--max", "2", "--page", "p1")
-		runJSON("classroom", "courses", "get", "c1")
-		runJSON("classroom", "courses", "create", "--name", "Biology", "--owner", "me", "--section", "sec", "--state", "active")
-		runJSON("classroom", "courses", "update", "c1", "--name", "Bio 2", "--state", "archived")
-		runJSON("classroom", "courses", "archive", "c1")
-		runJSON("classroom", "courses", "unarchive", "c1")
-		runJSON("classroom", "courses", "join", "c1", "--role", "student", "--user", "s1", "--enrollment-code", "code")
-		runJSON("classroom", "courses", "join", "c1", "--role", "teacher", "--user", "t1")
-		runJSONForce("classroom", "courses", "leave", "c1", "--role", "student", "--user", "s1")
-		runJSONForce("classroom", "courses", "leave", "c1", "--role", "teacher", "--user", "t1")
-		runJSON("classroom", "courses", "url", "c1", "c2")
-		runJSONForce("classroom", "courses", "delete", "c1")
+	runJSON("classroom", "courses", "--state", "active,archived", "--teacher", "t1", "--student", "s1", "--max", "2", "--page", "p1")
+	runJSON("classroom", "courses", "get", "c1")
+	runJSON("classroom", "courses", "create", "--name", "Biology", "--owner", "me", "--section", "sec", "--state", "active")
+	runJSON("classroom", "courses", "update", "c1", "--name", "Bio 2", "--state", "archived")
+	runJSON("classroom", "courses", "archive", "c1")
+	runJSON("classroom", "courses", "unarchive", "c1")
+	runJSON("classroom", "courses", "join", "c1", "--role", "student", "--user", "s1", "--enrollment-code", "code")
+	runJSON("classroom", "courses", "join", "c1", "--role", "teacher", "--user", "t1")
+	runJSONForce("classroom", "courses", "leave", "c1", "--role", "student", "--user", "s1")
+	runJSONForce("classroom", "courses", "leave", "c1", "--role", "teacher", "--user", "t1")
+	runJSON("classroom", "courses", "url", "c1", "c2")
+	runJSONForce("classroom", "courses", "delete", "c1")
 
-		runJSON("classroom", "students", "c1", "--max", "1", "--page", "p1")
-		runJSON("classroom", "students", "get", "c1", "s1")
-		runJSON("classroom", "students", "add", "c1", "s1", "--enrollment-code", "code")
-		runJSONForce("classroom", "students", "remove", "c1", "s1")
+	runJSON("classroom", "students", "c1", "--max", "1", "--page", "p1")
+	runJSON("classroom", "students", "get", "c1", "s1")
+	runJSON("classroom", "students", "add", "c1", "s1", "--enrollment-code", "code")
+	runJSONForce("classroom", "students", "remove", "c1", "s1")
 
-		runJSON("classroom", "teachers", "c1", "--max", "1", "--page", "p1")
-		runJSON("classroom", "teachers", "get", "c1", "t1")
-		runJSON("classroom", "teachers", "add", "c1", "t1")
-		runJSONForce("classroom", "teachers", "remove", "c1", "t1")
+	runJSON("classroom", "teachers", "c1", "--max", "1", "--page", "p1")
+	runJSON("classroom", "teachers", "get", "c1", "t1")
+	runJSON("classroom", "teachers", "add", "c1", "t1")
+	runJSONForce("classroom", "teachers", "remove", "c1", "t1")
 
-		runJSON("classroom", "roster", "c1", "--max", "1", "--page", "p1")
+	runJSON("classroom", "roster", "c1", "--max", "1", "--page", "p1")
 
-		courseworkOut := captureStdout(t, func() {
-			runJSON("classroom", "coursework", "c1", "--topic", "t1", "--state", "draft,published", "--max", "2", "--page", "p1")
-		})
-		if got := decodeJSONArrayLen(t, courseworkOut, "coursework"); got != 1 {
-			t.Fatalf("expected 1 coursework item after topic filter, got %d", got)
-		}
-		runJSON("classroom", "coursework", "get", "c1", "cw1")
-		runJSON("classroom", "coursework", "create", "c1", "--title", "Homework", "--type", "assignment", "--state", "draft", "--max-points", "10", "--due", "2024-03-15 14:30", "--scheduled", "2024-03-10T12:00:00Z", "--topic", "t1")
-		runJSON("classroom", "coursework", "update", "c1", "cw1", "--title", "Homework 2", "--state", "published", "--max-points", "20")
-		runJSONForce("classroom", "coursework", "delete", "c1", "cw1")
-		runJSON("classroom", "coursework", "assignees", "c1", "cw1", "--mode", "ALL_STUDENTS")
+	courseworkOut := runJSON("classroom", "coursework", "c1", "--topic", "t1", "--state", "draft,published", "--max", "2", "--page", "p1").stdout
+	if got := decodeJSONArrayLen(t, courseworkOut, "coursework"); got != 1 {
+		t.Fatalf("expected 1 coursework item after topic filter, got %d", got)
+	}
+	runJSON("classroom", "coursework", "get", "c1", "cw1")
+	runJSON("classroom", "coursework", "create", "c1", "--title", "Homework", "--type", "assignment", "--state", "draft", "--max-points", "10", "--due", "2024-03-15 14:30", "--scheduled", "2024-03-10T12:00:00Z", "--topic", "t1")
+	runJSON("classroom", "coursework", "update", "c1", "cw1", "--title", "Homework 2", "--state", "published", "--max-points", "20")
+	runJSONForce("classroom", "coursework", "delete", "c1", "cw1")
+	runJSON("classroom", "coursework", "assignees", "c1", "cw1", "--mode", "ALL_STUDENTS")
 
-		materialsOut := captureStdout(t, func() {
-			runJSON("classroom", "materials", "c1", "--topic", "t1", "--state", "draft,published", "--max", "2", "--page", "p1")
-		})
-		if got := decodeJSONArrayLen(t, materialsOut, "materials"); got != 1 {
-			t.Fatalf("expected 1 material item after topic filter, got %d", got)
-		}
-		runJSON("classroom", "materials", "get", "c1", "m1")
-		runJSON("classroom", "materials", "create", "c1", "--title", "Material", "--state", "draft", "--scheduled", "2024-03-10T12:00:00Z", "--topic", "t1")
-		runJSON("classroom", "materials", "update", "c1", "m1", "--title", "Material 2", "--topic", "t2")
-		runJSONForce("classroom", "materials", "delete", "c1", "m1")
+	materialsOut := runJSON("classroom", "materials", "c1", "--topic", "t1", "--state", "draft,published", "--max", "2", "--page", "p1").stdout
+	if got := decodeJSONArrayLen(t, materialsOut, "materials"); got != 1 {
+		t.Fatalf("expected 1 material item after topic filter, got %d", got)
+	}
+	runJSON("classroom", "materials", "get", "c1", "m1")
+	runJSON("classroom", "materials", "create", "c1", "--title", "Material", "--state", "draft", "--scheduled", "2024-03-10T12:00:00Z", "--topic", "t1")
+	runJSON("classroom", "materials", "update", "c1", "m1", "--title", "Material 2", "--topic", "t2")
+	runJSONForce("classroom", "materials", "delete", "c1", "m1")
 
-		runJSON("classroom", "announcements", "c1", "--state", "draft,published", "--order-by", "updateTime desc", "--max", "2", "--page", "p1")
-		runJSON("classroom", "announcements", "get", "c1", "a1")
-		runJSON("classroom", "announcements", "create", "c1", "--text", "Hello", "--state", "draft", "--scheduled", "2024-03-10T12:00:00Z")
-		runJSON("classroom", "announcements", "update", "c1", "a1", "--text", "Updated", "--state", "published")
-		runJSONForce("classroom", "announcements", "delete", "c1", "a1")
-		runJSON("classroom", "announcements", "assignees", "c1", "a1", "--mode", "INDIVIDUAL_STUDENTS", "--add-student", "s1")
+	runJSON("classroom", "announcements", "c1", "--state", "draft,published", "--order-by", "updateTime desc", "--max", "2", "--page", "p1")
+	runJSON("classroom", "announcements", "get", "c1", "a1")
+	runJSON("classroom", "announcements", "create", "c1", "--text", "Hello", "--state", "draft", "--scheduled", "2024-03-10T12:00:00Z")
+	runJSON("classroom", "announcements", "update", "c1", "a1", "--text", "Updated", "--state", "published")
+	runJSONForce("classroom", "announcements", "delete", "c1", "a1")
+	runJSON("classroom", "announcements", "assignees", "c1", "a1", "--mode", "INDIVIDUAL_STUDENTS", "--add-student", "s1")
 
-		runJSON("classroom", "topics", "c1", "--max", "1", "--page", "p1")
-		runJSON("classroom", "topics", "get", "c1", "t1")
-		runJSON("classroom", "topics", "create", "c1", "--name", "Topic 3")
-		runJSON("classroom", "topics", "update", "c1", "t1", "--name", "Topic 1 Updated")
-		runJSONForce("classroom", "topics", "delete", "c1", "t1")
+	runJSON("classroom", "topics", "c1", "--max", "1", "--page", "p1")
+	runJSON("classroom", "topics", "get", "c1", "t1")
+	runJSON("classroom", "topics", "create", "c1", "--name", "Topic 3")
+	runJSON("classroom", "topics", "update", "c1", "t1", "--name", "Topic 1 Updated")
+	runJSONForce("classroom", "topics", "delete", "c1", "t1")
 
-		runJSON("classroom", "submissions", "c1", "cw1", "--state", "turned_in", "--late", "not-late", "--user", "u1", "--max", "2", "--page", "p1")
-		runJSON("classroom", "submissions", "get", "c1", "cw1", "s1")
-		runJSON("classroom", "submissions", "turn-in", "c1", "cw1", "s1")
-		runJSON("classroom", "submissions", "reclaim", "c1", "cw1", "s1")
-		runJSON("classroom", "submissions", "return", "c1", "cw1", "s1")
-		runJSON("classroom", "submissions", "grade", "c1", "cw1", "s1", "--draft", "5", "--assigned", "10")
+	runJSON("classroom", "submissions", "c1", "cw1", "--state", "turned_in", "--late", "not-late", "--user", "u1", "--max", "2", "--page", "p1")
+	runJSON("classroom", "submissions", "get", "c1", "cw1", "s1")
+	runJSON("classroom", "submissions", "turn-in", "c1", "cw1", "s1")
+	runJSON("classroom", "submissions", "reclaim", "c1", "cw1", "s1")
+	runJSON("classroom", "submissions", "return", "c1", "cw1", "s1")
+	runJSON("classroom", "submissions", "grade", "c1", "cw1", "s1", "--draft", "5", "--assigned", "10")
 
-		runJSON("classroom", "invitations", "--course", "c1", "--user", "u1", "--max", "1", "--page", "p1")
-		runJSON("classroom", "invitations", "get", "i1")
-		runJSON("classroom", "invitations", "create", "c1", "u2", "--role", "teacher")
-		runJSON("classroom", "invitations", "accept", "i1")
-		runJSONForce("classroom", "invitations", "delete", "i1")
+	runJSON("classroom", "invitations", "--course", "c1", "--user", "u1", "--max", "1", "--page", "p1")
+	runJSON("classroom", "invitations", "get", "i1")
+	runJSON("classroom", "invitations", "create", "c1", "u2", "--role", "teacher")
+	runJSON("classroom", "invitations", "accept", "i1")
+	runJSONForce("classroom", "invitations", "delete", "i1")
 
-		runJSON("classroom", "guardians", "s1", "--email", "guardian@example.com", "--max", "1", "--page", "p1")
-		runJSON("classroom", "guardians", "get", "s1", "g1")
-		runJSONForce("classroom", "guardians", "delete", "s1", "g1")
+	runJSON("classroom", "guardians", "s1", "--email", "guardian@example.com", "--max", "1", "--page", "p1")
+	runJSON("classroom", "guardians", "get", "s1", "g1")
+	runJSONForce("classroom", "guardians", "delete", "s1", "g1")
 
-		runJSON("classroom", "guardian-invitations", "s1", "--email", "guardian@example.com", "--state", "pending", "--max", "1", "--page", "p1")
-		runJSON("classroom", "guardian-invitations", "get", "s1", "gi1")
-		runJSON("classroom", "guardian-invitations", "create", "s1", "--email", "guardian@example.com")
+	runJSON("classroom", "guardian-invitations", "s1", "--email", "guardian@example.com", "--state", "pending", "--max", "1", "--page", "p1")
+	runJSON("classroom", "guardian-invitations", "get", "s1", "gi1")
+	runJSON("classroom", "guardian-invitations", "create", "s1", "--email", "guardian@example.com")
 
-		runJSON("classroom", "profile")
-	})
+	runJSON("classroom", "profile")
 }
 
 func TestExecute_ClassroomValidationErrors(t *testing.T) {
-	origNew := newClassroomService
-	t.Cleanup(func() { newClassroomService = origNew })
-
-	svc, err := classroom.NewService(context.Background(), option.WithoutAuthentication())
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
+	svc, svcErr := classroom.NewService(context.Background(), option.WithoutAuthentication())
+	if svcErr != nil {
+		t.Fatalf("NewService: %v", svcErr)
 	}
-	newClassroomService = func(context.Context, string) (*classroom.Service, error) { return svc, nil }
 
-	_ = captureStderr(t, func() {
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "courses", "join", "c1", "--role", "nope"}); err == nil {
-			t.Fatalf("expected error for invalid join role")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "coursework", "create", "c1", "--title", "Work", "--due-time", "10:00"}); err == nil {
-			t.Fatalf("expected error for due time without date")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "coursework", "assignees", "c1", "cw1"}); err == nil {
-			t.Fatalf("expected error for missing coursework assignee changes")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "announcements", "assignees", "c1", "a1"}); err == nil {
-			t.Fatalf("expected error for missing announcement assignee changes")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "materials", "update", "c1", "m1"}); err == nil {
-			t.Fatalf("expected error for empty materials update")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "submissions", "grade", "c1", "cw1", "s1"}); err == nil {
-			t.Fatalf("expected error for missing grades")
-		}
-		if err := Execute([]string{"--account", "a@b.com", "classroom", "submissions", "grade", "c1", "cw1", "s1", "--assigned", "bad"}); err == nil {
-			t.Fatalf("expected error for invalid grade value")
-		}
-		err := Execute([]string{"--account", "a@b.com", "classroom", "invitations", "list"})
-		if err == nil || !strings.Contains(err.Error(), "at least one of --course or --user is required") {
-			t.Fatalf("expected invitation filter error, got %v", err)
-		}
-	})
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "courses", "join", "c1", "--role", "nope"}, svc).err; err == nil {
+		t.Fatalf("expected error for invalid join role")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "coursework", "create", "c1", "--title", "Work", "--due-time", "10:00"}, svc).err; err == nil {
+		t.Fatalf("expected error for due time without date")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "coursework", "assignees", "c1", "cw1"}, svc).err; err == nil {
+		t.Fatalf("expected error for missing coursework assignee changes")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "announcements", "assignees", "c1", "a1"}, svc).err; err == nil {
+		t.Fatalf("expected error for missing announcement assignee changes")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "materials", "update", "c1", "m1"}, svc).err; err == nil {
+		t.Fatalf("expected error for empty materials update")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "submissions", "grade", "c1", "cw1", "s1"}, svc).err; err == nil {
+		t.Fatalf("expected error for missing grades")
+	}
+	if err := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "submissions", "grade", "c1", "cw1", "s1", "--assigned", "bad"}, svc).err; err == nil {
+		t.Fatalf("expected error for invalid grade value")
+	}
+	validationErr := executeWithClassroomTestService(t, []string{"--account", "a@b.com", "classroom", "invitations", "list"}, svc).err
+	if validationErr == nil || !strings.Contains(validationErr.Error(), "at least one of --course or --user is required") {
+		t.Fatalf("expected invitation filter error, got %v", validationErr)
+	}
 }
 
 func TestExecute_ClassroomListInvalidMaxFailsBeforeService(t *testing.T) {
-	origNew := newClassroomService
-	t.Cleanup(func() { newClassroomService = origNew })
-	newClassroomService = func(context.Context, string) (*classroom.Service, error) {
+	factory := func(context.Context, string) (*classroom.Service, error) {
 		t.Fatalf("expected max validation to fail before creating classroom service")
 		return nil, errors.New("unexpected classroom service call")
 	}
@@ -592,7 +577,7 @@ func TestExecute_ClassroomListInvalidMaxFailsBeforeService(t *testing.T) {
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
-			err := Execute(args)
+			err := executeWithClassroomTestServiceFactory(t, args, factory).err
 			if ExitCode(err) != 2 || !strings.Contains(err.Error(), "max must be > 0") {
 				t.Fatalf("unexpected err: %v", err)
 			}
