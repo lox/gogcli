@@ -40,5 +40,6 @@ func IOFromContext(ctx context.Context) (IO, bool) {
 	if !ok {
 		return IO{}, false
 	}
+
 	return runtime.IO, true
 }
