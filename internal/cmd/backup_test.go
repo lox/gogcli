@@ -20,7 +20,10 @@ import (
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 
+	"github.com/steipete/gogcli/internal/app"
 	"github.com/steipete/gogcli/internal/backup"
+	gmailbackup "github.com/steipete/gogcli/internal/backup/gmail"
+	appconfig "github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/ui"
 )
 
@@ -298,72 +301,45 @@ func TestBackupPushValidatesBoundsBeforeAuth(t *testing.T) {
 	}
 }
 
-func TestGmailBackupMessageCacheRoundTrips(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	message := gmailBackupMessage{
-		ID:           "msg-one",
-		ThreadID:     "thread-one",
-		InternalDate: mustUnixMilli(t, "2026-04-02T10:00:00Z"),
-		LabelIDs:     []string{"INBOX"},
-		Raw:          base64.RawURLEncoding.EncodeToString([]byte("Subject: Cached\r\n\r\nBody")),
-	}
-	if err := writeGmailBackupMessageCache("accthash", message); err != nil {
-		t.Fatalf("writeGmailBackupMessageCache: %v", err)
-	}
-	got, ok, err := readGmailBackupMessageCache("accthash", "msg-one")
-	if err != nil {
-		t.Fatalf("readGmailBackupMessageCache: %v", err)
-	}
-	if !ok {
-		t.Fatal("expected cache hit")
-	}
-	if got.ID != message.ID || got.ThreadID != message.ThreadID || got.Raw != message.Raw {
-		t.Fatalf("cache round trip mismatch: %#v", got)
-	}
-	path, ok := gmailBackupMessageCachePath("accthash", "msg-one")
-	if !ok {
-		t.Fatal("expected cache path")
-	}
-	if strings.Contains(path, "msg-one") {
-		t.Fatalf("cache path should hash message IDs, got %q", path)
-	}
-}
+func TestConfigureGmailBackupCacheUsesRuntimeLayout(t *testing.T) {
+	ambientHome := t.TempDir()
+	t.Setenv("HOME", ambientHome)
+	cacheRoot := filepath.Join(t.TempDir(), "runtime-cache")
+	ctx := app.WithRuntime(context.Background(), &app.Runtime{
+		Layout: appconfig.Layout{CacheDir: cacheRoot},
+	})
+	opts := gmailBackupOptions{CacheMessages: true}
 
-func TestGmailBackupMessageCacheRejectsWrongID(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	message := gmailBackupMessage{ID: "msg-one", Raw: "raw"}
-	if err := writeGmailBackupMessageCache("accthash", message); err != nil {
-		t.Fatalf("writeGmailBackupMessageCache: %v", err)
+	if err := configureGmailBackupCache(ctx, &opts); err != nil {
+		t.Fatalf("configureGmailBackupCache: %v", err)
 	}
-	path, ok := gmailBackupMessageCachePath("accthash", "msg-one")
-	if !ok {
-		t.Fatal("expected cache path")
+	if err := opts.Cache.WriteMessage("accthash", gmailBackupMessage{ID: "m1", Raw: "raw"}); err != nil {
+		t.Fatalf("WriteMessage: %v", err)
 	}
-	data, err := json.Marshal(gmailBackupMessage{ID: "other", Raw: "raw"})
+	path, ok := opts.Cache.MessagePath("accthash", "m1")
+	if !ok || !strings.HasPrefix(path, cacheRoot+string(filepath.Separator)) {
+		t.Fatalf("cache path = %q ok=%t, want root %q", path, ok, cacheRoot)
+	}
+	entries, err := os.ReadDir(ambientHome)
 	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+		t.Fatalf("ReadDir ambient home: %v", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	if _, _, err := readGmailBackupMessageCache("accthash", "msg-one"); err == nil {
-		t.Fatal("expected wrong cache ID to fail")
+	if len(entries) != 0 {
+		t.Fatalf("ambient home was modified: %v", entries)
 	}
 }
 
 func TestListGmailBackupMessageIDsResumesFromCheckpoint(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	cache := newGmailBackupTestCache(t)
 	opts := gmailBackupOptions{
 		AccountHash:      "accthash",
 		IncludeSpamTrash: true,
 		CacheMessages:    true,
+		Cache:            cache,
 	}
-	path, ok := gmailBackupListStatePath(opts)
-	if !ok {
-		t.Fatal("expected list state path")
-	}
-	if err := writeGmailBackupListState(path, opts, []string{"m1"}, "p2", false); err != nil {
-		t.Fatalf("writeGmailBackupListState: %v", err)
+	selection := gmailBackupSelection(opts)
+	if err := cache.WriteListState(selection, []string{"m1"}, "p2", false); err != nil {
+		t.Fatalf("WriteListState: %v", err)
 	}
 
 	requests := 0
@@ -396,9 +372,9 @@ func TestListGmailBackupMessageIDsResumesFromCheckpoint(t *testing.T) {
 	if !strings.Contains(stderr.String(), "resume=partial") || !strings.Contains(stderr.String(), "messages=2") {
 		t.Fatalf("stderr missing progress: %s", stderr.String())
 	}
-	state, ok, err := readGmailBackupListState(path)
+	state, ok, err := cache.ReadListState(selection)
 	if err != nil {
-		t.Fatalf("readGmailBackupListState: %v", err)
+		t.Fatalf("ReadListState: %v", err)
 	}
 	if !ok || !state.Complete || strings.Join(state.IDs, ",") != "m1,m2" {
 		t.Fatalf("state = %#v ok=%t", state, ok)
@@ -406,18 +382,15 @@ func TestListGmailBackupMessageIDsResumesFromCheckpoint(t *testing.T) {
 }
 
 func TestListGmailBackupMessageIDsReusesCompleteCheckpoint(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	cache := newGmailBackupTestCache(t)
 	opts := gmailBackupOptions{
 		AccountHash:      "accthash",
 		IncludeSpamTrash: true,
 		CacheMessages:    true,
+		Cache:            cache,
 	}
-	path, ok := gmailBackupListStatePath(opts)
-	if !ok {
-		t.Fatal("expected list state path")
-	}
-	if err := writeGmailBackupListState(path, opts, []string{"m1", "m2"}, "", true); err != nil {
-		t.Fatalf("writeGmailBackupListState: %v", err)
+	if err := cache.WriteListState(gmailBackupSelection(opts), []string{"m1", "m2"}, "", true); err != nil {
+		t.Fatalf("WriteListState: %v", err)
 	}
 
 	requests := 0
@@ -440,12 +413,13 @@ func TestListGmailBackupMessageIDsReusesCompleteCheckpoint(t *testing.T) {
 }
 
 func TestListGmailBackupMessageIDsMarksMaxLimitedRunComplete(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	cache := newGmailBackupTestCache(t)
 	opts := gmailBackupOptions{
 		AccountHash:      "accthash",
 		Max:              1,
 		IncludeSpamTrash: true,
 		CacheMessages:    true,
+		Cache:            cache,
 	}
 	svc, cleanup := newGmailServiceForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -462,13 +436,9 @@ func TestListGmailBackupMessageIDsMarksMaxLimitedRunComplete(t *testing.T) {
 	if strings.Join(ids, ",") != "m1" {
 		t.Fatalf("ids = %v, want [m1]", ids)
 	}
-	path, ok := gmailBackupListStatePath(opts)
-	if !ok {
-		t.Fatal("expected list state path")
-	}
-	state, ok, err := readGmailBackupListState(path)
+	state, ok, err := cache.ReadListState(gmailBackupSelection(opts))
 	if err != nil {
-		t.Fatalf("readGmailBackupListState: %v", err)
+		t.Fatalf("ReadListState: %v", err)
 	}
 	if !ok || !state.Complete || state.PageToken != "" {
 		t.Fatalf("state = %#v ok=%t", state, ok)
@@ -476,7 +446,6 @@ func TestListGmailBackupMessageIDsMarksMaxLimitedRunComplete(t *testing.T) {
 }
 
 func TestEnsureGmailBackupMessageCacheStopsOnFirstFetchError(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	var requests atomic.Int32
 	svc, cleanup := newGmailServiceForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -492,6 +461,7 @@ func TestEnsureGmailBackupMessageCacheStopsOnFirstFetchError(t *testing.T) {
 		AccountHash:      "accthash",
 		CacheMessages:    true,
 		IncludeSpamTrash: true,
+		Cache:            newGmailBackupTestCache(t),
 	}, ids)
 	if err == nil || !strings.Contains(err.Error(), "gmail message msg-") {
 		t.Fatalf("expected message fetch error, got %v", err)
@@ -502,7 +472,6 @@ func TestEnsureGmailBackupMessageCacheStopsOnFirstFetchError(t *testing.T) {
 }
 
 func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "repo")
 	identity := filepath.Join(dir, "age.key")
@@ -533,6 +502,7 @@ func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
 	defer cleanup()
 
 	ids := []string{"m1", "m2", "m3", "m4", "m5"}
+	cache := newGmailBackupTestCache(t)
 	err = ensureGmailBackupMessageCache(context.Background(), svc, gmailBackupOptions{
 		AccountHash:      "accthash",
 		CacheMessages:    true,
@@ -541,6 +511,7 @@ func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
 		CheckpointRows:   2,
 		CheckpointRunID:  "run-test",
 		BackupOptions:    backup.Options{ConfigPath: config, Push: false},
+		Cache:            cache,
 	}, ids)
 	if err != nil {
 		t.Fatalf("ensureGmailBackupMessageCache: %v", err)
@@ -567,7 +538,6 @@ func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
 }
 
 func TestBuildGmailMessageShardsFromCheckpointPromotesCompleteRun(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	ctx := context.Background()
 	repo, config, recipients := newBackupConfigForCmdTest(t)
 	checkpointShard, err := backup.NewJSONLShard(backupServiceGmail, "messages", "accthash", "checkpoints/gmail/accthash/run-test/messages/part-000001.jsonl.gz.age", []gmailBackupMessage{
@@ -655,17 +625,21 @@ func TestGmailBackupResolvedCheckpointRunIDReusesSelectionRun(t *testing.T) {
 }
 
 func TestBuildGmailCheckpointShardFromCacheWritesPlaintextPath(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	accountHash := "accthash"
+	cache := newGmailBackupTestCache(t)
 	for _, message := range []gmailBackupMessage{
 		{ID: "m1", InternalDate: mustUnixMilli(t, "2026-04-01T10:00:00Z"), Raw: "raw-1"},
 		{ID: "m2", InternalDate: mustUnixMilli(t, "2026-04-02T10:00:00Z"), Raw: "raw-2"},
 	} {
-		if err := writeGmailBackupMessageCache(accountHash, message); err != nil {
-			t.Fatalf("writeGmailBackupMessageCache: %v", err)
+		if err := cache.WriteMessage(accountHash, message); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
 		}
 	}
-	shard, err := buildGmailCheckpointShardFromCache(accountHash, "run-test", 3, []string{"m1", "m2"})
+	shard, err := buildGmailCheckpointShardFromCache(gmailBackupOptions{
+		AccountHash:     accountHash,
+		CheckpointRunID: "run-test",
+		Cache:           cache,
+	}, 3, []string{"m1", "m2"})
 	if err != nil {
 		t.Fatalf("buildGmailCheckpointShardFromCache: %v", err)
 	}
@@ -689,17 +663,21 @@ func TestBuildGmailCheckpointShardFromCacheWritesPlaintextPath(t *testing.T) {
 }
 
 func TestBuildGmailCheckpointShardsFromCacheSplitsLargeChunks(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	accountHash := "accthash"
+	cache := newGmailBackupTestCache(t)
 	ids := make([]string, gmailCheckpointShardMaxRows+1)
 	for i := range ids {
 		id := fmt.Sprintf("m-%04d", i)
 		ids[i] = id
-		if err := writeGmailBackupMessageCache(accountHash, gmailBackupMessage{ID: id, Raw: "raw-" + id}); err != nil {
-			t.Fatalf("writeGmailBackupMessageCache: %v", err)
+		if err := cache.WriteMessage(accountHash, gmailBackupMessage{ID: id, Raw: "raw-" + id}); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
 		}
 	}
-	shards, err := buildGmailCheckpointShardsFromCache(accountHash, "run-test", 7, ids)
+	shards, err := buildGmailCheckpointShardsFromCache(gmailBackupOptions{
+		AccountHash:     accountHash,
+		CheckpointRunID: "run-test",
+		Cache:           cache,
+	}, 7, ids)
 	if err != nil {
 		t.Fatalf("buildGmailCheckpointShardsFromCache: %v", err)
 	}
@@ -715,18 +693,22 @@ func TestBuildGmailCheckpointShardsFromCacheSplitsLargeChunks(t *testing.T) {
 }
 
 func TestBuildGmailCheckpointShardsFromCacheSplitsByPlaintextSize(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	oldLimit := gmailCheckpointShardMaxPlaintextBytes
 	gmailCheckpointShardMaxPlaintextBytes = 1
 	t.Cleanup(func() { gmailCheckpointShardMaxPlaintextBytes = oldLimit })
 	accountHash := "accthash"
+	cache := newGmailBackupTestCache(t)
 	ids := []string{"m1", "m2", "m3"}
 	for _, id := range ids {
-		if err := writeGmailBackupMessageCache(accountHash, gmailBackupMessage{ID: id, Raw: strings.Repeat("raw-"+id, 8)}); err != nil {
-			t.Fatalf("writeGmailBackupMessageCache: %v", err)
+		if err := cache.WriteMessage(accountHash, gmailBackupMessage{ID: id, Raw: strings.Repeat("raw-"+id, 8)}); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
 		}
 	}
-	shards, err := buildGmailCheckpointShardsFromCache(accountHash, "run-test", 11, ids)
+	shards, err := buildGmailCheckpointShardsFromCache(gmailBackupOptions{
+		AccountHash:     accountHash,
+		CheckpointRunID: "run-test",
+		Cache:           cache,
+	}, 11, ids)
 	if err != nil {
 		t.Fatalf("buildGmailCheckpointShardsFromCache: %v", err)
 	}
@@ -745,21 +727,22 @@ func TestBuildGmailCheckpointShardsFromCacheSplitsByPlaintextSize(t *testing.T) 
 }
 
 func TestBuildGmailMessageShardsFromCacheSplitsByPlaintextSize(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	accountHash := "accthash"
+	cache := newGmailBackupTestCache(t)
 	ids := []string{"m1", "m2", "m3"}
 	for _, id := range ids {
-		if err := writeGmailBackupMessageCache(accountHash, gmailBackupMessage{
+		if err := cache.WriteMessage(accountHash, gmailBackupMessage{
 			ID:           id,
 			InternalDate: mustUnixMilli(t, "2026-04-02T10:00:00Z"),
 			Raw:          strings.Repeat("raw-"+id, 8),
 		}); err != nil {
-			t.Fatalf("writeGmailBackupMessageCache: %v", err)
+			t.Fatalf("WriteMessage: %v", err)
 		}
 	}
 	shards, err := buildGmailMessageShardsFromCacheWithLimit(context.Background(), gmailBackupOptions{
 		AccountHash:  accountHash,
 		ShardMaxRows: 100,
+		Cache:        cache,
 	}, ids, 1)
 	if err != nil {
 		t.Fatalf("buildGmailMessageShardsFromCacheWithLimit: %v", err)
@@ -779,21 +762,22 @@ func TestBuildGmailMessageShardsFromCacheSplitsByPlaintextSize(t *testing.T) {
 }
 
 func TestBuildGmailMessageShardsFromCacheWritesPlaintextPaths(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	accountHash := "accthash"
+	cache := newGmailBackupTestCache(t)
 	messages := []gmailBackupMessage{
 		{ID: "april-b", InternalDate: mustUnixMilli(t, "2026-04-02T10:00:00Z"), Raw: "raw-b"},
 		{ID: "april-a", InternalDate: mustUnixMilli(t, "2026-04-01T10:00:00Z"), Raw: "raw-a"},
 		{ID: "march-a", InternalDate: mustUnixMilli(t, "2026-03-01T10:00:00Z"), Raw: "raw-m"},
 	}
 	for _, message := range messages {
-		if err := writeGmailBackupMessageCache(accountHash, message); err != nil {
-			t.Fatalf("writeGmailBackupMessageCache: %v", err)
+		if err := cache.WriteMessage(accountHash, message); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
 		}
 	}
 	shards, err := buildGmailMessageShardsFromCache(context.Background(), gmailBackupOptions{
 		AccountHash:  accountHash,
 		ShardMaxRows: 1,
+		Cache:        cache,
 	}, []string{"april-b", "april-a", "march-a"})
 	if err != nil {
 		t.Fatalf("buildGmailMessageShardsFromCache: %v", err)
@@ -1037,4 +1021,13 @@ func readText(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(data)
+}
+
+func newGmailBackupTestCache(t *testing.T) gmailbackup.Cache {
+	t.Helper()
+	cache, err := gmailbackup.NewCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("gmailbackup.NewCache: %v", err)
+	}
+	return cache
 }
