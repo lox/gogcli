@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -111,8 +110,6 @@ type calendarTimezoneHint struct {
 	loc      *time.Location
 }
 
-const calendarLocationColumnSuffix = "\tLOCATION"
-
 func listAllCalendarsEvents(ctx context.Context, svc *calendar.Service, from, to string, maxResults int64, page string, allPages bool, failEmpty bool, query, privatePropFilter, sharedPropFilter, fields string, showWeekday bool, showLocation bool, sortKey, sortOrder string) error {
 	u := ui.FromContext(ctx)
 
@@ -194,53 +191,13 @@ func renderCalendarEventsTable(ctx context.Context, events []*eventWithCalendar,
 		return failEmptyExit(failEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-
-	if showWeekday {
-		if includeCalendar {
-			header := "CALENDAR\tID\tSTART\tSTART_DOW\tEND\tEND_DOW\tSUMMARY"
-			if showLocation {
-				header += calendarLocationColumnSuffix
-			}
-			fmt.Fprintln(w, header)
-			for _, e := range events {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s%s\n", e.CalendarID, e.Id, eventDisplayStart(e), e.StartDayOfWeek, eventDisplayEnd(e), e.EndDayOfWeek, e.Summary, eventLocationCell(e, showLocation))
-			}
-		} else {
-			header := "ID\tSTART\tSTART_DOW\tEND\tEND_DOW\tSUMMARY"
-			if showLocation {
-				header += calendarLocationColumnSuffix
-			}
-			fmt.Fprintln(w, header)
-			for _, e := range events {
-				startDay, endDay := e.StartDayOfWeek, e.EndDayOfWeek
-				if startDay == "" && endDay == "" {
-					startDay, endDay = eventDaysOfWeek(e.Event)
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s%s\n", e.Id, eventDisplayStart(e), startDay, eventDisplayEnd(e), endDay, e.Summary, eventLocationCell(e, showLocation))
-			}
-		}
-	} else {
-		if includeCalendar {
-			header := "CALENDAR\tID\tSTART\tEND\tSUMMARY"
-			if showLocation {
-				header += calendarLocationColumnSuffix
-			}
-			fmt.Fprintln(w, header)
-			for _, e := range events {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s%s\n", e.CalendarID, e.Id, eventDisplayStart(e), eventDisplayEnd(e), e.Summary, eventLocationCell(e, showLocation))
-			}
-		} else {
-			header := "ID\tSTART\tEND\tSUMMARY"
-			if showLocation {
-				header += calendarLocationColumnSuffix
-			}
-			fmt.Fprintln(w, header)
-			for _, e := range events {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s%s\n", e.Id, eventDisplayStart(e), eventDisplayEnd(e), e.Summary, eventLocationCell(e, showLocation))
-			}
-		}
+	if err := outfmt.WriteTable(
+		ctx,
+		stdoutWriter(ctx),
+		compactCalendarRows(events),
+		calendarEventColumns(includeCalendar, showWeekday, showLocation),
+	); err != nil {
+		return err
 	}
 	if printPageHint {
 		printNextPageHint(u, nextPageToken)
@@ -283,13 +240,6 @@ func eventDisplayEnd(e *eventWithCalendar) string {
 		return ""
 	}
 	return eventEnd(e.Event)
-}
-
-func eventLocationCell(e *eventWithCalendar, showLocation bool) string {
-	if !showLocation {
-		return ""
-	}
-	return "\t" + eventDisplayLocation(e)
 }
 
 // eventDisplayLocation returns the event location formatted for a single

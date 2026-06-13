@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"google.golang.org/api/calendar/v3"
@@ -66,11 +65,13 @@ func (c *CalendarCalendarsCmd) Run(ctx context.Context, flags *RootFlags) error 
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "ID\tNAME\tROLE")
-	for _, cal := range items {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", cal.Id, cal.Summary, cal.AccessRole)
+	if err := outfmt.WriteTable(
+		ctx,
+		stdoutWriter(ctx),
+		compactCalendarRows(items),
+		calendarListColumns(),
+	); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 	return nil
@@ -197,17 +198,13 @@ func (c *CalendarAclCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "SCOPE_TYPE\tSCOPE_VALUE\tROLE")
-	for _, rule := range items {
-		scopeType := ""
-		scopeValue := ""
-		if rule.Scope != nil {
-			scopeType = rule.Scope.Type
-			scopeValue = rule.Scope.Value
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", scopeType, scopeValue, rule.Role)
+	if err := outfmt.WriteTable(
+		ctx,
+		stdoutWriter(ctx),
+		compactCalendarRows(items),
+		calendarACLColumns(),
+	); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 	return nil

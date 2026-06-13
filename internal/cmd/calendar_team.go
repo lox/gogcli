@@ -101,20 +101,14 @@ func (c *CalendarTeamCmd) runFreeBusy(ctx context.Context, svc *calendar.Service
 		return fmt.Errorf("freebusy query: %w", err)
 	}
 
-	type busyResult struct {
-		Email  string   `json:"email"`
-		Busy   []string `json:"busy"`
-		Errors []string `json:"errors,omitempty"`
-	}
-
-	results := make([]busyResult, 0, len(emails))
+	results := make([]calendarTeamBusyResult, 0, len(emails))
 	for _, email := range emails {
 		cal, ok := resp.Calendars[email]
 		if !ok {
 			continue
 		}
 
-		result := busyResult{Email: email}
+		result := calendarTeamBusyResult{Email: email}
 
 		// Check for errors
 		if len(cal.Errors) > 0 {
@@ -146,21 +140,7 @@ func (c *CalendarTeamCmd) runFreeBusy(ctx context.Context, svc *calendar.Service
 		})
 	}
 
-	// Text output
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "WHO\tBUSY BLOCKS")
-	for _, r := range results {
-		busyStr := strings.Join(r.Busy, ", ")
-		if busyStr == "" {
-			busyStr = "(free)"
-		}
-		if len(r.Errors) > 0 {
-			busyStr = "error: " + strings.Join(r.Errors, ", ")
-		}
-		fmt.Fprintf(w, "%s\t%s\n", sanitizeTab(r.Email), sanitizeTab(busyStr))
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), results, calendarTeamBusyColumns())
 }
 
 func (c *CalendarTeamCmd) runEvents(ctx context.Context, svc *calendar.Service, u *ui.UI, emails []string, tr *TimeRange) error {
@@ -280,18 +260,7 @@ func (c *CalendarTeamCmd) runEvents(ctx context.Context, svc *calendar.Service, 
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "WHO\tSTART\tEND\tSUMMARY")
-	for _, ev := range events {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			sanitizeTab(ev.Who),
-			sanitizeTab(ev.Start),
-			sanitizeTab(ev.End),
-			sanitizeTab(truncate(ev.Summary, 40)),
-		)
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), events, calendarTeamEventColumns())
 }
 
 func formatEventTime(ev *calendar.Event, loc *time.Location) (start, end string) {

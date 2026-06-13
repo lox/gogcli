@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/steipete/gogcli/internal/config"
@@ -32,18 +30,7 @@ func (c *CalendarAliasListCmd) Run(ctx context.Context) error {
 		u.Err().Println("No calendar aliases")
 		return nil
 	}
-	keys := make([]string, 0, len(aliases))
-	for k := range aliases {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "ALIAS\tCALENDAR_ID")
-	for _, k := range keys {
-		fmt.Fprintf(w, "%s\t%s\n", k, aliases[k])
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), calendarAliasRows(aliases), calendarAliasColumns())
 }
 
 type CalendarAliasSetCmd struct {

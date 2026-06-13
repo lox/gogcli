@@ -104,31 +104,15 @@ func (c *CalendarUsersCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "EMAIL\tNAME")
-	firstEmail := ""
-	for _, p := range peopleList {
-		if p == nil {
-			continue
-		}
-		email := primaryEmail(p)
-		if email == "" {
-			continue
-		}
-		if firstEmail == "" {
-			firstEmail = email
-		}
-		fmt.Fprintf(w, "%s\t%s\n",
-			sanitizeTab(email),
-			sanitizeTab(primaryName(p)),
-		)
+	rows := calendarUserRows(peopleList)
+	if err := outfmt.WriteTable(ctx, stdoutWriter(ctx), rows, calendarUserColumns()); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 
 	u.Err().Println("\nTip: Use any email above as a calendar ID, e.g.:")
-	if firstEmail != "" {
-		u.Err().Linef("  gog calendar events %s", firstEmail)
+	if len(rows) > 0 {
+		u.Err().Linef("  gog calendar events %s", rows[0].Email)
 	}
 
 	return nil

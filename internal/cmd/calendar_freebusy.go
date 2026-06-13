@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"google.golang.org/api/calendar/v3"
@@ -58,13 +57,5 @@ func (c *CalendarFreeBusyCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "CALENDAR\tSTART\tEND")
-	for id, data := range resp.Calendars {
-		for _, b := range data.Busy {
-			fmt.Fprintf(w, "%s\t%s\t%s\n", id, b.Start, b.End)
-		}
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), calendarFreeBusyRows(resp.Calendars), calendarFreeBusyColumns())
 }
