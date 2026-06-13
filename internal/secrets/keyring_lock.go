@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/99designs/keyring"
-
-	"github.com/steipete/gogcli/internal/config"
 )
 
 const (
@@ -20,29 +18,16 @@ const (
 
 var (
 	keyringLocksMu sync.Mutex
-	keyringLocks   = make(map[string]*keyringLock)
+	keyringLocks   = make(map[string]*sync.RWMutex)
 )
 
 type keyringLock struct {
 	path    string
 	timeout time.Duration
-	mu      sync.RWMutex
+	mu      *sync.RWMutex
 }
 
-func keyringLockForRing(ring keyring.Keyring) (*keyringLock, bool, error) {
-	if !isFileBackedKeyring(ring) {
-		return nil, false, nil
-	}
-
-	dir, err := config.EnsureKeyringDir()
-	if err != nil {
-		return nil, false, fmt.Errorf("ensure keyring lock dir: %w", err)
-	}
-
-	return keyringLockForRingInDir(ring, dir)
-}
-
-func keyringLockForRingInDir(ring keyring.Keyring, dir string) (*keyringLock, bool, error) {
+func keyringLockForRingInDir(ring keyring.Keyring, dir string, timeout time.Duration) (*keyringLock, bool, error) {
 	if !isFileBackedKeyring(ring) {
 		return nil, false, nil
 	}
@@ -51,7 +36,11 @@ func keyringLockForRingInDir(ring keyring.Keyring, dir string) (*keyringLock, bo
 		return nil, false, fmt.Errorf("ensure keyring lock dir: %w", err)
 	}
 
-	return sharedKeyringLock(filepath.Join(dir, keyringLockFilename), keyringLockTimeout()), true, nil
+	if timeout <= 0 {
+		timeout = defaultKeyringLockTimeout
+	}
+
+	return sharedKeyringLock(filepath.Join(dir, keyringLockFilename), timeout), true, nil
 }
 
 func sharedKeyringLock(path string, timeout time.Duration) *keyringLock {
@@ -60,18 +49,16 @@ func sharedKeyringLock(path string, timeout time.Duration) *keyringLock {
 	keyringLocksMu.Lock()
 	defer keyringLocksMu.Unlock()
 
-	if existing := keyringLocks[path]; existing != nil {
-		return existing
+	mu := keyringLocks[path]
+	if mu == nil {
+		mu = &sync.RWMutex{}
+		keyringLocks[path] = mu
 	}
 
-	lock := &keyringLock{path: path, timeout: timeout}
-	keyringLocks[path] = lock
-
-	return lock
+	return &keyringLock{path: path, timeout: timeout, mu: mu}
 }
 
-func keyringLockTimeout() time.Duration {
-	raw := os.Getenv(keyringLockTimeoutEnv)
+func parseKeyringLockTimeout(raw string) time.Duration {
 	if raw == "" {
 		return defaultKeyringLockTimeout
 	}

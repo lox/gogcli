@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	goruntime "runtime"
 	"time"
 
 	admin "google.golang.org/api/admin/directory/v1"
@@ -43,10 +44,12 @@ import (
 var (
 	errIncompleteRuntimeLayout = errors.New("injected config store has incomplete runtime layout")
 	errRuntimeLayoutMismatch   = errors.New("runtime layout does not match injected config store")
+	errRuntimeKeyringRequired  = errors.New("runtime keyring options are required")
 )
 
 func newDefaultRuntime() *app.Runtime {
-	return &app.Runtime{
+	keyringOptions := systemKeyringOpenOptions(config.Layout{}, nil)
+	runtime := &app.Runtime{
 		IO: app.IO{
 			In:  os.Stdin,
 			Out: os.Stdout,
@@ -100,7 +103,20 @@ func newDefaultRuntime() *app.Runtime {
 			FetchAuthorizedIdentity: googleauth.IdentityForRefreshToken,
 			ManualAuthURL:           googleauth.ManualAuthURL,
 		},
+		KeyringOptions: &keyringOptions,
 	}
+
+	return runtime
+}
+
+func systemKeyringOpenOptions(layout config.Layout, store *config.ConfigStore) secrets.OpenOptions {
+	return secrets.OpenOptionsFromLookup(
+		layout,
+		store,
+		os.LookupEnv,
+		goruntime.GOOS,
+		termutil.IsTerminal(os.Stdin),
+	)
 }
 
 func normalizedRuntime(runtime *app.Runtime) *app.Runtime {
@@ -237,18 +253,12 @@ func normalizedRuntime(runtime *app.Runtime) *app.Runtime {
 func normalizeRuntimeAuth(runtime *app.Runtime, defaults *app.Runtime) {
 	if runtime.Auth.OpenSecretsStore == nil {
 		runtime.Auth.OpenSecretsStore = func() (secrets.Store, error) {
-			if err := configureRuntimeSecrets(runtime, ""); err != nil {
-				return nil, err
-			}
-			return secrets.OpenWithConfig(runtime.Layout, runtime.Config)
+			return openRuntimeSecretsRepository(runtime)
 		}
 	}
 	if runtime.Auth.OpenSecretStore == nil {
 		runtime.Auth.OpenSecretStore = func() (secrets.SecretStore, error) {
-			if err := configureRuntimeSecrets(runtime, ""); err != nil {
-				return nil, err
-			}
-			return secrets.OpenWithConfig(runtime.Layout, runtime.Config)
+			return openRuntimeSecretsRepository(runtime)
 		}
 	}
 	if runtime.Auth.AuthorizeGoogle == nil {
@@ -269,6 +279,30 @@ func normalizeRuntimeAuth(runtime *app.Runtime, defaults *app.Runtime) {
 	if runtime.Auth.ManualAuthURL == nil {
 		runtime.Auth.ManualAuthURL = defaults.Auth.ManualAuthURL
 	}
+}
+
+func openRuntimeSecretsRepository(runtime *app.Runtime) (secrets.Repository, error) {
+	options, err := runtimeKeyringOpenOptions(runtime)
+	if err != nil {
+		return nil, err
+	}
+
+	return secrets.Open(options)
+}
+
+func runtimeKeyringOpenOptions(runtime *app.Runtime) (secrets.OpenOptions, error) {
+	if runtime == nil || runtime.KeyringOptions == nil {
+		return secrets.OpenOptions{}, errRuntimeKeyringRequired
+	}
+	if err := configureRuntimeSecrets(runtime, ""); err != nil {
+		return secrets.OpenOptions{}, err
+	}
+
+	options := *runtime.KeyringOptions
+	options.Layout = runtime.Layout
+	options.Config = runtime.Config
+
+	return options, nil
 }
 
 func configureRuntimeConfig(runtime *app.Runtime, homeOverride string) error {
@@ -461,6 +495,11 @@ func startAuthManageServer(ctx context.Context, options googleauth.ManageServerO
 	if options.ReadCredentials == nil {
 		options.ReadCredentials = func(client string) (config.ClientCredentials, error) {
 			return authclient.ReadCredentials(ctx, client)
+		}
+	}
+	if options.EnsureKeychainAccess == nil {
+		options.EnsureKeychainAccess = func() error {
+			return ensureKeychainAccessIfNeeded(ctx)
 		}
 	}
 	if runtime, ok := app.FromContext(ctx); ok && runtime.Auth.StartManageServer != nil {

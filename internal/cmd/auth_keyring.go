@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/steipete/gogcli/internal/outfmt"
-	"github.com/steipete/gogcli/internal/secrets"
 	"github.com/steipete/gogcli/internal/ui"
 )
 
@@ -36,7 +35,7 @@ func (c *AuthKeyringCmd) Run(ctx context.Context, flags *RootFlags) error {
 			return err
 		}
 		path := store.Path()
-		info, err := secrets.ResolveKeyringBackendInfoFor(store)
+		info, err := resolveKeyringBackendInfo(ctx)
 		if err != nil {
 			return err
 		}

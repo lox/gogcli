@@ -40,8 +40,38 @@ func TestAuthManageCmd_ServicesAndOptions(t *testing.T) {
 	if got.UpdateEmailReferences == nil {
 		t.Fatal("expected email reference updater")
 	}
+	if got.EnsureKeychainAccess == nil {
+		t.Fatal("expected keychain preflight")
+	}
+	if err := got.EnsureKeychainAccess(); err != nil {
+		t.Fatalf("file backend preflight: %v", err)
+	}
 	if len(got.Services) != 2 {
 		t.Fatalf("expected de-duped services, got %#v", got.Services)
+	}
+}
+
+func TestAuthManageCmdKeychainPreflightUsesRuntime(t *testing.T) {
+	called := false
+	ctx := withTestRuntime(context.Background(), func(runtime *app.Runtime) {
+		runtime.KeyringOptions.Backend = "keychain"
+		runtime.Auth.EnsureKeychainAccess = func(context.Context) error {
+			called = true
+			return nil
+		}
+		runtime.Auth.StartManageServer = func(_ context.Context, opts googleauth.ManageServerOptions) error {
+			if opts.EnsureKeychainAccess == nil {
+				t.Fatal("expected keychain preflight")
+			}
+			return opts.EnsureKeychainAccess()
+		}
+	})
+
+	if err := runKong(t, &AuthManageCmd{}, nil, ctx, nil); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !called {
+		t.Fatal("runtime keychain preflight was not called")
 	}
 }
 

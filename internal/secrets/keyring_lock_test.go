@@ -24,7 +24,7 @@ func TestKeyringLockForRingInDirUsesInjectedDirectory(t *testing.T) {
 	dir := t.TempDir()
 	ring := newFileSafeKeyring(keyring.NewArrayKeyring(nil))
 
-	lock, ok, err := keyringLockForRingInDir(ring, dir)
+	lock, ok, err := keyringLockForRingInDir(ring, dir, 2*time.Second)
 	if err != nil {
 		t.Fatalf("keyringLockForRingInDir: %v", err)
 	}
@@ -35,6 +35,22 @@ func TestKeyringLockForRingInDirUsesInjectedDirectory(t *testing.T) {
 
 	if want := filepath.Join(dir, keyringLockFilename); lock.path != want {
 		t.Fatalf("lock path = %q, want %q", lock.path, want)
+	}
+}
+
+func TestSharedKeyringLockPreservesPerRuntimeTimeout(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), keyringLockFilename)
+	first := sharedKeyringLock(path, time.Second)
+	second := sharedKeyringLock(path, 2*time.Second)
+
+	if first.mu != second.mu {
+		t.Fatal("expected locks for the same path to share a mutex")
+	}
+
+	if first.timeout != time.Second || second.timeout != 2*time.Second {
+		t.Fatalf("timeouts = %v and %v", first.timeout, second.timeout)
 	}
 }
 
@@ -76,7 +92,7 @@ func TestKeyringLockBlocksConcurrentProcess(t *testing.T) {
 		t.Fatalf("unexpected helper output: %q", line)
 	}
 
-	lock := &keyringLock{path: path, timeout: 50 * time.Millisecond}
+	lock := &keyringLock{path: path, timeout: 50 * time.Millisecond, mu: &sync.RWMutex{}}
 
 	err = lock.withReadLock(func() error { return nil })
 	if err == nil {
@@ -240,15 +256,11 @@ func TestSetSecretFileBackendUsesSharedLock(t *testing.T) {
 }
 
 func TestKeyringLockTimeoutEnv(t *testing.T) {
-	t.Setenv(keyringLockTimeoutEnv, "25ms")
-
-	if got := keyringLockTimeout(); got != 25*time.Millisecond {
+	if got := parseKeyringLockTimeout("25ms"); got != 25*time.Millisecond {
 		t.Fatalf("expected parsed timeout, got %v", got)
 	}
 
-	t.Setenv(keyringLockTimeoutEnv, "not-a-duration")
-
-	if got := keyringLockTimeout(); got != defaultKeyringLockTimeout {
+	if got := parseKeyringLockTimeout("not-a-duration"); got != defaultKeyringLockTimeout {
 		t.Fatalf("expected default timeout for invalid env, got %v", got)
 	}
 }

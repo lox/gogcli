@@ -42,6 +42,132 @@ func TestKeyringServiceName(t *testing.T) {
 	}
 }
 
+func TestOpenOptionsFromLookupCapturesEnvironment(t *testing.T) {
+	t.Parallel()
+
+	values := map[string]string{
+		keyringBackendEnv:          " file ",
+		keyringPasswordEnv:         "",
+		keyringServiceNameEnv:      " custom-gog ",
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/dbus",
+		keyringLockTimeoutEnv:      "125ms",
+	}
+	options := OpenOptionsFromLookup(
+		config.Layout{ConfigDir: "/config", DataDir: "/data"},
+		config.NewConfigStore(config.Layout{ConfigDir: "/config"}),
+		func(key string) (string, bool) {
+			value, ok := values[key]
+			return value, ok
+		},
+		"linux",
+		true,
+	)
+
+	if options.Backend != " file " || options.ServiceName != "custom-gog" {
+		t.Fatalf("options = %#v", options)
+	}
+
+	if options.Password != "" || !options.PasswordSet {
+		t.Fatalf("empty password presence was not preserved: %#v", options)
+	}
+
+	if options.GOOS != "linux" || options.DBusAddress != "unix:path=/tmp/dbus" || !options.IsTTY {
+		t.Fatalf("platform options = %#v", options)
+	}
+
+	if options.OpenTimeout != keyringOpenTimeout || options.LockTimeout != 125*time.Millisecond {
+		t.Fatalf("timeouts = open %v lock %v", options.OpenTimeout, options.LockTimeout)
+	}
+}
+
+func TestOpenUsesInjectedOptions(t *testing.T) {
+	t.Parallel()
+
+	layout := config.Layout{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
+	var opened keyring.Config
+	options := OpenOptions{
+		Layout:      layout,
+		Config:      config.NewConfigStore(layout),
+		Backend:     "file",
+		Password:    "pw",
+		PasswordSet: true,
+		ServiceName: "isolated",
+		GOOS:        "linux",
+		DBusAddress: "ignored",
+		OpenTimeout: time.Second,
+		LockTimeout: 250 * time.Millisecond,
+		openKeyringFn: func(cfg keyring.Config) (keyring.Keyring, error) {
+			opened = cfg
+			return keyring.NewArrayKeyring(nil), nil
+		},
+	}
+
+	repository, err := Open(options)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	store, ok := repository.(*KeyringStore)
+	if !ok {
+		t.Fatalf("repository = %T", repository)
+	}
+
+	if opened.ServiceName != "isolated" ||
+		len(opened.AllowedBackends) != 1 ||
+		opened.AllowedBackends[0] != keyring.FileBackend {
+		t.Fatalf("keyring config = %#v", opened)
+	}
+
+	password, err := opened.FilePasswordFunc("prompt")
+	if err != nil || password != "pw" {
+		t.Fatalf("password = %q, err = %v", password, err)
+	}
+
+	if store.lock == nil || store.lock.path != filepath.Join(layout.KeyringDir(), keyringLockFilename) {
+		t.Fatalf("lock = %#v", store.lock)
+	}
+
+	if store.lock.timeout != 250*time.Millisecond {
+		t.Fatalf("lock timeout = %v", store.lock.timeout)
+	}
+}
+
+func TestOpenKeepsRuntimeHomesIndependent(t *testing.T) {
+	t.Parallel()
+
+	open := func(root string) *KeyringStore {
+		t.Helper()
+
+		layout := config.Layout{
+			ConfigDir: filepath.Join(root, "config"),
+			DataDir:   filepath.Join(root, "data"),
+		}
+
+		repository, err := Open(OpenOptions{
+			Layout:      layout,
+			Config:      config.NewConfigStore(layout),
+			Backend:     "file",
+			PasswordSet: true,
+			GOOS:        "linux",
+			openKeyringFn: func(keyring.Config) (keyring.Keyring, error) {
+				return keyring.NewArrayKeyring(nil), nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+
+		return repository.(*KeyringStore)
+	}
+
+	first := open(t.TempDir())
+	second := open(t.TempDir())
+
+	if first.lock == nil || second.lock == nil || first.lock.path == second.lock.path {
+		t.Fatalf("locks must be independent: first=%#v second=%#v", first.lock, second.lock)
+	}
+}
+
 func TestResolveKeyringBackendInfo_Default(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -148,6 +274,29 @@ func TestResolveKeyringBackendInfoForUsesInjectedStore(t *testing.T) {
 	}
 }
 
+func TestResolveKeyringBackendInfoWithOptionsUsesCapturedOverride(t *testing.T) {
+	t.Parallel()
+
+	layout := config.Layout{ConfigDir: t.TempDir()}
+	store := config.NewConfigStore(layout)
+
+	if err := store.Write(config.File{KeyringBackend: "file"}); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	info, err := ResolveKeyringBackendInfoWithOptions(OpenOptions{
+		Config:  store,
+		Backend: "keychain",
+	})
+	if err != nil {
+		t.Fatalf("ResolveKeyringBackendInfoWithOptions: %v", err)
+	}
+
+	if info.Value != "keychain" || info.Source != keyringBackendSourceEnv {
+		t.Fatalf("backend info = %#v", info)
+	}
+}
+
 func TestAllowedBackends_Invalid(t *testing.T) {
 	_, err := allowedBackends(KeyringBackendInfo{Value: "nope"})
 	if err == nil {
@@ -239,7 +388,7 @@ func TestOpenKeyringWithTimeout_Success(t *testing.T) {
 	cfg := keyringConfig(keyringDir)
 
 	// Should complete well within the timeout
-	ring, err := openKeyringWithTimeout(cfg, 5*time.Second)
+	ring, err := openKeyringWithTimeoutFunc(cfg, 5*time.Second, keyringTimeoutHint(runtime.GOOS), keyring.Open)
 	if err != nil {
 		t.Fatalf("openKeyringWithTimeout: %v", err)
 	}
@@ -269,7 +418,7 @@ func TestOpenKeyringWithTimeout_Timeout(t *testing.T) {
 		return nil, errKeyringOpenBlocked
 	}
 
-	_, err = openKeyringWithTimeoutFunc(cfg, 10*time.Millisecond, open)
+	_, err = openKeyringWithTimeoutFunc(cfg, 10*time.Millisecond, keyringTimeoutHint(runtime.GOOS), open)
 
 	close(blockCh)
 

@@ -48,6 +48,7 @@ type ManageServerOptions struct {
 	RedirectURI           string
 	UpdateEmailReferences EmailReferenceUpdater
 	ReadCredentials       func(client string) (config.ClientCredentials, error)
+	EnsureKeychainAccess  func() error
 }
 
 // ManageServer handles the accounts management UI
@@ -66,11 +67,7 @@ type ManageServer struct {
 	resultCh      chan error
 }
 
-var (
-	openDefaultStore          func() (secrets.Store, error)
-	resolveKeyringBackendInfo = secrets.ResolveKeyringBackendInfo
-	ensureKeychainAccess      = secrets.EnsureKeychainAccess
-)
+var openDefaultStore func() (secrets.Store, error)
 
 var (
 	errUserinfoRequestFailed = errors.New("userinfo request failed")
@@ -82,15 +79,6 @@ var (
 )
 
 const userinfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
-
-func shouldEnsureKeychainAccess() (bool, error) {
-	backendInfo, err := resolveKeyringBackendInfo()
-	if err != nil {
-		return false, err
-	}
-
-	return backendInfo.Value != "file", nil
-}
 
 // StartManageServer starts the accounts management server and opens browser
 func StartManageServer(ctx context.Context, opts ManageServerOptions) error {
@@ -489,17 +477,8 @@ func (ms *ManageServer) handleOAuthCallback(w http.ResponseWriter, r *http.Reque
 	}
 	email := identity.Email
 
-	// Pre-flight: ensure keychain is accessible before storing token
-	needKeychain, err := shouldEnsureKeychainAccess()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		renderErrorPage(w, "Failed to resolve keyring backend: "+err.Error())
-
-		return
-	}
-
-	if needKeychain {
-		if keychainErr := ensureKeychainAccess(); keychainErr != nil {
+	if ms.opts.EnsureKeychainAccess != nil {
+		if keychainErr := ms.opts.EnsureKeychainAccess(); keychainErr != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			renderErrorPage(w, "Keychain is locked: "+keychainErr.Error())
 

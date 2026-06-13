@@ -12,7 +12,6 @@ import (
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/googleauth"
 	"github.com/steipete/gogcli/internal/outfmt"
-	"github.com/steipete/gogcli/internal/secrets"
 	"github.com/steipete/gogcli/internal/ui"
 )
 
@@ -34,7 +33,7 @@ func (c *AuthStatusCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if err != nil {
 		return err
 	}
-	backendInfo, err := secrets.ResolveKeyringBackendInfoFor(configStore)
+	backendInfo, err := resolveKeyringBackendInfo(ctx)
 	if err != nil {
 		return err
 	}

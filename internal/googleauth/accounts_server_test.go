@@ -23,10 +23,7 @@ import (
 	"github.com/steipete/gogcli/internal/secrets"
 )
 
-var (
-	errBoom          = errors.New("boom")
-	errShouldNotCall = errors.New("should not call")
-)
+var errBoom = errors.New("boom")
 
 type fakeStore struct {
 	tokens       []secrets.Token
@@ -829,22 +826,12 @@ func TestManageServer_HandleOAuthCallback_MigratesAndDeletesAliasAfterSetToken(t
 
 	origRead := readClientCredentials
 	origEndpoint := oauthEndpoint
-	origResolve := resolveKeyringBackendInfo
-	origEnsure := ensureKeychainAccess
 
 	t.Cleanup(func() {
 		readClientCredentials = origRead
 		oauthEndpoint = origEndpoint
-		resolveKeyringBackendInfo = origResolve
-		ensureKeychainAccess = origEnsure
 	})
 
-	resolveKeyringBackendInfo = func() (secrets.KeyringBackendInfo, error) {
-		return secrets.KeyringBackendInfo{Value: "file", Source: "env"}, nil
-	}
-	ensureKeychainAccess = func() error {
-		return errShouldNotCall
-	}
 	readClientCredentials = func(string) (config.ClientCredentials, error) {
 		return config.ClientCredentials{ClientID: "id", ClientSecret: "secret"}, nil
 	}
@@ -946,25 +933,14 @@ func TestStartManageServerRequiresEmailReferenceUpdater(t *testing.T) {
 	}
 }
 
-func TestManageServer_HandleOAuthCallback_FileBackendSkipsKeychain(t *testing.T) {
+func TestManageServer_HandleOAuthCallback_NoKeychainPreflight(t *testing.T) {
 	origRead := readClientCredentials
 	origEndpoint := oauthEndpoint
-	origResolve := resolveKeyringBackendInfo
-	origEnsure := ensureKeychainAccess
 
 	t.Cleanup(func() {
 		readClientCredentials = origRead
 		oauthEndpoint = origEndpoint
-		resolveKeyringBackendInfo = origResolve
-		ensureKeychainAccess = origEnsure
 	})
-
-	resolveKeyringBackendInfo = func() (secrets.KeyringBackendInfo, error) {
-		return secrets.KeyringBackendInfo{Value: "file", Source: "env"}, nil
-	}
-	ensureKeychainAccess = func() error {
-		return errShouldNotCall
-	}
 
 	readClientCredentials = func(string) (config.ClientCredentials, error) {
 		return config.ClientCredentials{ClientID: "id", ClientSecret: "secret"}, nil
@@ -1056,12 +1032,19 @@ func TestManageServer_HandleOAuthCallback_Success_IDTokenEmail(t *testing.T) {
 	t.Cleanup(func() { _ = ln.Close() })
 
 	store := &fakeStore{}
+	preflightCalled := false
 	ms := &ManageServer{
 		oauthState:    "state1",
 		oauthVerifier: testCodeVerifier,
 		listener:      ln,
 		store:         store,
-		opts:          ManageServerOptions{Services: []Service{ServiceGmail}},
+		opts: ManageServerOptions{
+			Services: []Service{ServiceGmail},
+			EnsureKeychainAccess: func() error {
+				preflightCalled = true
+				return nil
+			},
+		},
 	}
 
 	rr := httptest.NewRecorder()
@@ -1074,6 +1057,10 @@ func TestManageServer_HandleOAuthCallback_Success_IDTokenEmail(t *testing.T) {
 
 	if store.setTokenEmail != "me@example.com" {
 		t.Fatalf("expected token stored for me@example.com, got %q", store.setTokenEmail)
+	}
+
+	if !preflightCalled {
+		t.Fatal("expected keychain preflight")
 	}
 }
 

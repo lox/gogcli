@@ -77,6 +77,17 @@ func resolveKeyringBackendInfo(ctx context.Context) (secrets.KeyringBackendInfo,
 	if err != nil {
 		return secrets.KeyringBackendInfo{}, err
 	}
+
+	if runtime, ok := app.FromContext(ctx); ok {
+		if runtime.KeyringOptions == nil {
+			return secrets.KeyringBackendInfo{}, errRuntimeKeyringRequired
+		}
+		options := *runtime.KeyringOptions
+		options.Layout = runtime.Layout
+		options.Config = store
+		return secrets.ResolveKeyringBackendInfoWithOptions(options)
+	}
+
 	return secrets.ResolveKeyringBackendInfoFor(store)
 }
 

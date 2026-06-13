@@ -4,11 +4,13 @@ package tracking
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/secrets"
+	"github.com/steipete/gogcli/internal/termutil"
 )
 
 func TestIntegrationEncryptDecryptWithWorker(t *testing.T) {
@@ -17,7 +19,7 @@ func TestIntegrationEncryptDecryptWithWorker(t *testing.T) {
 		t.Skip("set GOG_IT_ACCOUNT to run integration test")
 	}
 
-	layout, err := config.ResolveSystemLayoutFor("", config.PathKindConfig, config.PathKindState)
+	layout, err := config.ResolveSystemLayoutFor("", config.PathKindConfig, config.PathKindData, config.PathKindState)
 	if err != nil {
 		t.Skipf("Tracking layout unavailable: %v", err)
 	}
@@ -28,7 +30,14 @@ func TestIntegrationEncryptDecryptWithWorker(t *testing.T) {
 			t.Skipf("Legacy tracking path unavailable: %v", err)
 		}
 	}
-	secretRepository, err := secrets.OpenWithConfig(layout, config.NewConfigStore(layout))
+	configStore := config.NewConfigStore(layout)
+	secretRepository, err := secrets.Open(secrets.OpenOptionsFromLookup(
+		layout,
+		configStore,
+		os.LookupEnv,
+		runtime.GOOS,
+		termutil.IsTerminal(os.Stdin),
+	))
 	if err != nil {
 		t.Skipf("Tracking secrets unavailable: %v", err)
 	}

@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
+	"time"
 
 	admin "google.golang.org/api/admin/directory/v1"
 	analyticsadmin "google.golang.org/api/analyticsadmin/v1beta"
@@ -34,7 +36,75 @@ import (
 	"github.com/steipete/gogcli/internal/app"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/googleapi"
+	"github.com/steipete/gogcli/internal/secrets"
 )
+
+func TestDefaultRuntimeSnapshotsKeyringOptions(t *testing.T) {
+	t.Setenv("GOG_KEYRING_BACKEND", "file")
+	t.Setenv("GOG_KEYRING_PASSWORD", "")
+	t.Setenv("GOG_KEYRING_SERVICE_NAME", "snapshot")
+	t.Setenv("GOG_KEYRING_LOCK_TIMEOUT", "250ms")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/snapshot")
+
+	runtime := newDefaultRuntime()
+	t.Setenv("GOG_KEYRING_BACKEND", "keychain")
+	t.Setenv("GOG_KEYRING_SERVICE_NAME", "changed")
+
+	options := runtime.KeyringOptions
+	if options == nil {
+		t.Fatal("expected keyring options")
+	}
+	if options.Backend != "file" || options.ServiceName != "snapshot" {
+		t.Fatalf("options = %#v", options)
+	}
+	if options.Password != "" || !options.PasswordSet {
+		t.Fatalf("empty password presence was not captured: %#v", options)
+	}
+	if options.GOOS != goruntime.GOOS || options.DBusAddress != "unix:path=/snapshot" {
+		t.Fatalf("platform options = %#v", options)
+	}
+	if options.LockTimeout != 250*time.Millisecond {
+		t.Fatalf("lock timeout = %v", options.LockTimeout)
+	}
+}
+
+func TestNormalizedRuntimeRequiresKeyringOptions(t *testing.T) {
+	t.Parallel()
+
+	layout := config.Layout{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
+	runtime := normalizedRuntime(&app.Runtime{
+		Layout: layout,
+		Config: config.NewConfigStore(layout),
+	})
+
+	if _, err := runtime.Auth.OpenSecretsStore(); !errors.Is(err, errRuntimeKeyringRequired) {
+		t.Fatalf("error = %v, want keyring options required", err)
+	}
+}
+
+func TestResolveKeyringBackendInfoUsesRuntimeOptions(t *testing.T) {
+	t.Setenv("GOG_KEYRING_BACKEND", "keychain")
+
+	layout := config.Layout{ConfigDir: t.TempDir()}
+	store := config.NewConfigStore(layout)
+	if err := store.Write(config.File{KeyringBackend: "auto"}); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	options := secrets.OpenOptions{Backend: "file", GOOS: goruntime.GOOS}
+	ctx := app.WithRuntime(context.Background(), &app.Runtime{
+		Layout:         layout,
+		Config:         store,
+		KeyringOptions: &options,
+	})
+
+	info, err := resolveKeyringBackendInfo(ctx)
+	if err != nil {
+		t.Fatalf("resolveKeyringBackendInfo: %v", err)
+	}
+	if info.Value != "file" || info.Source != "env" {
+		t.Fatalf("backend info = %#v", info)
+	}
+}
 
 func TestConfigureRuntimeConfigUsesInjectedLayout(t *testing.T) {
 	t.Parallel()
@@ -159,7 +229,13 @@ func TestNormalizedRuntimeOpensSecretsWithInjectedConfig(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	runtime := normalizedRuntime(&app.Runtime{Layout: layout, Config: store})
+	options := testKeyringOptions()
+	options.Backend = ""
+	runtime := normalizedRuntime(&app.Runtime{
+		Layout:         layout,
+		Config:         store,
+		KeyringOptions: options,
+	})
 	_, err := runtime.Auth.OpenSecretsStore()
 	if err == nil || !strings.Contains(err.Error(), "invalid keyring backend") {
 		t.Fatalf("OpenSecretsStore() error = %v, want injected backend validation", err)
