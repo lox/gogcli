@@ -331,6 +331,8 @@ type errorTokenStore struct {
 	keys      []string
 	err       error
 	keysCalls int
+	getErrs   []error
+	getCalls  int
 }
 
 func (s *errorTokenStore) Keys() ([]string, error) {
@@ -342,6 +344,10 @@ func (s *errorTokenStore) Keys() ([]string, error) {
 func (s *errorTokenStore) SetToken(string, string, secrets.Token) error { return nil }
 
 func (s *errorTokenStore) GetToken(string, string) (secrets.Token, error) {
+	s.getCalls++
+	if s.getCalls <= len(s.getErrs) {
+		return secrets.Token{}, s.getErrs[s.getCalls-1]
+	}
 	return secrets.Token{}, s.err
 }
 
@@ -374,6 +380,36 @@ func TestAuthListWithFallbackSkipsReadableFallbackOnKeyringTimeout(t *testing.T)
 
 	if store.keysCalls != 0 {
 		t.Fatalf("fallback should not call Keys after timeout, got %d calls", store.keysCalls)
+	}
+}
+
+func TestAuthListWithFallbackStopsReadableFallbackOnKeyringTimeout(t *testing.T) {
+	store := &errorTokenStore{
+		keys: []string{
+			secrets.TokenKey(config.DefaultClientName, "broken@example.com"),
+			secrets.TokenKey(config.DefaultClientName, "timeout@example.com"),
+			secrets.TokenKey(config.DefaultClientName, "unread@example.com"),
+		},
+		err: errors.New("list tokens: malformed token"),
+		getErrs: []error{
+			errors.New("decode token: malformed payload"),
+			errors.New("keyring connection timed out after 10s while reading keyring item"),
+			errors.New("must not be read"),
+		},
+	}
+
+	tokens, readErrors, err := listAuthTokensWithFallback(store)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !secrets.IsKeyringTimeout(err) {
+		t.Fatalf("expected keyring timeout, got %v", err)
+	}
+	if len(tokens) != 0 || len(readErrors) != 0 {
+		t.Fatalf("expected no partial fallback results, got tokens=%#v readErrors=%#v", tokens, readErrors)
+	}
+	if store.getCalls != 2 {
+		t.Fatalf("fallback should stop after timeout, got %d token reads", store.getCalls)
 	}
 }
 

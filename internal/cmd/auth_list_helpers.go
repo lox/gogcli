@@ -317,10 +317,14 @@ func readableTokens(store secrets.Store) ([]secrets.Token, []authTokenReadError,
 
 		tok, err := store.GetToken(client, email)
 		if err != nil {
+			readErr := fmt.Errorf("read token for %s: %w", email, err)
+			if secrets.IsKeyringTimeout(err) {
+				return nil, nil, readErr
+			}
 			readErrors = append(readErrors, authTokenReadError{
 				Client: client,
 				Email:  email,
-				Err:    fmt.Errorf("read token for %s: %w", email, err),
+				Err:    readErr,
 			})
 			continue
 		}
