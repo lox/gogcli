@@ -16,12 +16,7 @@ import (
 // Per the Google Docs API: "The nesting level of each paragraph is determined
 // by counting leading tabs in front of each paragraph."
 func (c *DocsSedCmd) applyDeferredBullets(ctx context.Context, docsSvc *docs.Service, id string) error {
-	var doc *docs.Document
-	err := retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(id).Context(ctx).Do()
-		return e
-	})
+	doc, err := getDoc(ctx, docsSvc, id)
 	if err != nil {
 		return err
 	}
@@ -202,12 +197,7 @@ func (c *DocsSedCmd) applyDeferredBullets(ctx context.Context, docsSvc *docs.Ser
 	// Process first group only — then recursively handle remaining groups
 	// by re-fetching the doc (indices shift when tabs are consumed by bullets).
 	if len(requests) >= 2 {
-		err = retryOnQuota(ctx, func() error {
-			_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-				Requests: requests[:2],
-			}).Context(ctx).Do()
-			return e
-		})
+		_, err = batchUpdate(ctx, docsSvc, id, requests[:2])
 		if err != nil {
 			return err
 		}

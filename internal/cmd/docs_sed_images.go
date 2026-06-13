@@ -18,12 +18,7 @@ func (c *DocsSedCmd) runImageReplace(ctx context.Context, u *ui.UI, account, doc
 	}
 
 	// Get document to find images
-	var doc *docs.Document
-	err = retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(docID).Context(ctx).Do()
-		return e
-	})
+	doc, err := getDoc(ctx, docsSvc, docID)
 	if err != nil {
 		return fmt.Errorf("get document: %w", err)
 	}
@@ -133,12 +128,7 @@ func (c *DocsSedCmd) runImageReplace(ctx context.Context, u *ui.UI, account, doc
 	}
 
 	// Execute batch update
-	err = retryOnQuota(ctx, func() error {
-		_, e := docsSvc.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
-			Requests: requests,
-		}).Context(ctx).Do()
-		return e
-	})
+	_, err = batchUpdate(ctx, docsSvc, docID, requests)
 	if err != nil {
 		return fmt.Errorf("update document: %w", err)
 	}

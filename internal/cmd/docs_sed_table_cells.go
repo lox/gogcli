@@ -53,12 +53,7 @@ func (c *DocsSedCmd) runTableCellReplace(ctx context.Context, u *ui.UI, account,
 		return sedOutputOK(ctx, u, id, sedOutputKV{"replaced", 0})
 	}
 
-	err = retryOnQuota(ctx, func() error {
-		_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-			Requests: requests,
-		}).Context(ctx).Do()
-		return e
-	})
+	_, err = batchUpdate(ctx, docsSvc, id, requests)
 	if err != nil {
 		return fmt.Errorf("batch update: %w", err)
 	}
@@ -107,10 +102,7 @@ func (c *DocsSedCmd) runBatchCellReplace(ctx context.Context, _ *ui.UI, account,
 	}
 
 	if len(requests) > 0 {
-		err = retryOnQuota(ctx, func() error {
-			_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{Requests: requests}).Context(ctx).Do()
-			return e
-		})
+		_, err = batchUpdate(ctx, docsSvc, id, requests)
 		if err != nil {
 			return fmt.Errorf("batch cell update: %w", err)
 		}
@@ -188,12 +180,7 @@ func (c *DocsSedCmd) runTableWildcardReplace(
 		return sedOutputOK(ctx, u, id, sedOutputKV{"replaced", 0})
 	}
 
-	err := retryOnQuota(ctx, func() error {
-		_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-			Requests: requests,
-		}).Context(ctx).Do()
-		return e
-	})
+	_, err := batchUpdate(ctx, docsSvc, id, requests)
 	if err != nil {
 		return fmt.Errorf("batch update (wildcard cell replace): %w", err)
 	}

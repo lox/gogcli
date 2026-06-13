@@ -19,32 +19,15 @@ func (e *sedExpr) compilePattern() (*regexp.Regexp, error) {
 	return regexp.Compile(e.pattern)
 }
 
-// batchUpdate executes a Documents.BatchUpdate with retry-on-quota.
+// batchUpdate executes a document update through the sed executor.
 // Returns the response (may be nil on success with no replies).
 func batchUpdate(ctx context.Context, docsSvc *docs.Service, docID string, reqs []*docs.Request) (*docs.BatchUpdateDocumentResponse, error) {
-	if len(reqs) == 0 {
-		return &docs.BatchUpdateDocumentResponse{DocumentId: docID}, nil
-	}
-	var resp *docs.BatchUpdateDocumentResponse
-	err := retryOnQuota(ctx, func() error {
-		var e error
-		resp, e = docsSvc.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
-			Requests: reqs,
-		}).Context(ctx).Do()
-		return e
-	})
-	return resp, err
+	return docssed.NewServiceExecutor(docsSvc).BatchUpdate(ctx, docID, reqs)
 }
 
-// getDoc fetches a document with retry-on-quota.
+// getDoc fetches a document through the sed executor.
 func getDoc(ctx context.Context, docsSvc *docs.Service, docID string) (*docs.Document, error) {
-	var doc *docs.Document
-	err := retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(docID).Context(ctx).Do()
-		return e
-	})
-	return doc, err
+	return docssed.NewServiceExecutor(docsSvc).Get(ctx, docID)
 }
 
 // codeBackgroundGrey is the RGB value for inline code background shading.

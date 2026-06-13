@@ -84,12 +84,7 @@ func (c *DocsSedCmd) doPositionalInsert(ctx context.Context, docsSvc *docs.Servi
 		requests = append(requests, buildParagraphStyleRequests(formats, idx, end)...)
 	}
 
-	err := retryOnQuota(ctx, func() error {
-		_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-			Requests: requests,
-		}).Context(ctx).Do()
-		return e
-	})
+	_, err := batchUpdate(ctx, docsSvc, id, requests)
 	if err != nil {
 		return fmt.Errorf("batch update (positional insert): %w", err)
 	}

@@ -41,12 +41,7 @@ func tableCreateSpecFromParsed(spec *docssed.TableCreateSpec) *tableCreateSpec {
 // fillTableCells populates a newly-created table with cell content from spec.cells.
 // nearIndex is the approximate document index where the table was inserted.
 func (c *DocsSedCmd) fillTableCells(ctx context.Context, docsSvc *docs.Service, id string, nearIndex int64, spec *tableCreateSpec) error {
-	var doc *docs.Document
-	err := retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(id).Context(ctx).Do()
-		return e
-	})
+	doc, err := getDoc(ctx, docsSvc, id)
 	if err != nil {
 		return fmt.Errorf("re-fetch document after table create: %w", err)
 	}
@@ -97,12 +92,7 @@ func (c *DocsSedCmd) fillTableCells(ctx context.Context, docsSvc *docs.Service, 
 	}
 
 	if len(fillRequests) > 0 {
-		err = retryOnQuota(ctx, func() error {
-			_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-				Requests: fillRequests,
-			}).Context(ctx).Do()
-			return e
-		})
+		_, err = batchUpdate(ctx, docsSvc, id, fillRequests)
 		if err != nil {
 			return fmt.Errorf("batch update (fill table cells): %w", err)
 		}
@@ -165,12 +155,7 @@ func (c *DocsSedCmd) runTableCreate(ctx context.Context, u *ui.UI, account, id s
 		},
 	})
 
-	err = retryOnQuota(ctx, func() error {
-		_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-			Requests: requests,
-		}).Context(ctx).Do()
-		return e
-	})
+	_, err = batchUpdate(ctx, docsSvc, id, requests)
 	if err != nil {
 		return fmt.Errorf("batch update (create table): %w", err)
 	}

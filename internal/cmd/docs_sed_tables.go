@@ -38,12 +38,7 @@ func (c *DocsSedCmd) runTableOp(ctx context.Context, u *ui.UI, account, id strin
 		return fmt.Errorf("create docs service: %w", err)
 	}
 
-	var doc *docs.Document
-	err = retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(id).Context(ctx).Do()
-		return e
-	})
+	doc, err := getDoc(ctx, docsSvc, id)
 	if err != nil {
 		return fmt.Errorf("get document: %w", err)
 	}
@@ -107,12 +102,7 @@ func (c *DocsSedCmd) runTableOp(ctx context.Context, u *ui.UI, account, id strin
 			})
 		}
 
-		err = retryOnQuota(ctx, func() error {
-			_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-				Requests: requests,
-			}).Context(ctx).Do()
-			return e
-		})
+		_, err = batchUpdate(ctx, docsSvc, id, requests)
 		if err != nil {
 			return fmt.Errorf("batch update (delete table): %w", err)
 		}

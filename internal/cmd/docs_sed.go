@@ -154,12 +154,7 @@ func (c *DocsSedCmd) runPositionalInsert(ctx context.Context, u *ui.UI, account,
 		return true, fmt.Errorf("create docs service: %w", err)
 	}
 
-	var doc *docs.Document
-	err = retryOnQuota(ctx, func() error {
-		var e error
-		doc, e = docsSvc.Documents.Get(id).Context(ctx).Do()
-		return e
-	})
+	doc, err := getDoc(ctx, docsSvc, id)
 	if err != nil {
 		return true, fmt.Errorf("get document: %w", err)
 	}
@@ -203,19 +198,14 @@ func (c *DocsSedCmd) runPositionalInsert(ctx context.Context, u *ui.UI, account,
 			if deleteEnd < 2 {
 				return true, sedOutputOK(ctx, u, id, sedOutputKV{"cleared", 0})
 			}
-			err = retryOnQuota(ctx, func() error {
-				_, e := docsSvc.Documents.BatchUpdate(id, &docs.BatchUpdateDocumentRequest{
-					Requests: []*docs.Request{{
-						DeleteContentRange: &docs.DeleteContentRangeRequest{
-							Range: &docs.Range{
-								StartIndex: 1,
-								EndIndex:   deleteEnd,
-							},
-						},
-					}},
-				}).Context(ctx).Do()
-				return e
-			})
+			_, err = batchUpdate(ctx, docsSvc, id, []*docs.Request{{
+				DeleteContentRange: &docs.DeleteContentRangeRequest{
+					Range: &docs.Range{
+						StartIndex: 1,
+						EndIndex:   deleteEnd,
+					},
+				},
+			}})
 			if err != nil {
 				return true, fmt.Errorf("clearing document: %w", err)
 			}
