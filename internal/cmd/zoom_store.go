@@ -19,10 +19,7 @@ func commandZoomStore(ctx context.Context) (*zoom.Store, error) {
 			if runtime.Auth.OpenSecretStore != nil {
 				return runtime.Auth.OpenSecretStore()
 			}
-			if err := configureRuntimeSecrets(runtime, ""); err != nil {
-				return nil, err
-			}
-			return secrets.OpenWithConfig(runtime.Layout, runtime.Config)
+			return openRuntimeSecretsRepository(runtime)
 		}, os.LookupEnv)
 		if err != nil {
 			return nil, err
@@ -39,7 +36,8 @@ func commandZoomStore(ctx context.Context) (*zoom.Store, error) {
 		if layoutErr != nil {
 			return nil, layoutErr
 		}
-		return secrets.OpenWithConfig(fullLayout, config.NewConfigStore(fullLayout))
+		configStore := config.NewConfigStore(fullLayout)
+		return secrets.Open(systemKeyringOpenOptions(fullLayout, configStore))
 	}, os.LookupEnv)
 	if err != nil {
 		return nil, err

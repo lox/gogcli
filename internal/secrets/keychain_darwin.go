@@ -85,13 +85,6 @@ func unlockKeychain(ctx context.Context) error {
 	return nil
 }
 
-// EnsureKeychainAccess checks if the keychain is accessible and unlocks it if needed.
-// Returns nil if keychain is accessible (unlocked or successfully unlocked).
-// Returns error if keychain cannot be unlocked.
-func EnsureKeychainAccess() error {
-	return EnsureKeychainAccessContext(context.Background())
-}
-
 func EnsureKeychainAccessContext(ctx context.Context) error {
 	if !checkKeychainLocked(ctx) {
 		return nil

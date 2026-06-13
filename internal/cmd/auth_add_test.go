@@ -35,7 +35,7 @@ func runtimeWithAuthTestOperations(
 		AuthorizeGoogle:         authorize,
 		EnsureKeychainAccess:    ensureKeychain,
 		FetchAuthorizedIdentity: fetchIdentity,
-	}}
+	}, KeyringOptions: testKeyringOptions()}
 }
 
 func TestAuthAddCmd_JSON(t *testing.T) {
@@ -137,9 +137,11 @@ func TestAuthAddCmd_KeychainError(t *testing.T) {
 	openSecretsStore := func() (secrets.Store, error) { return store, nil }
 
 	cmd := &AuthAddCmd{Email: "test@example.com", ServicesCSV: "gmail"}
-	ctx := app.WithRuntime(withTestClientResolver(context.Background()), runtimeWithAuthTestOperations(
+	runtime := runtimeWithAuthTestOperations(
 		openSecretsStore, authorizeGoogle, ensureKeychainAccess, fetchAuthorizedIdentity,
-	))
+	)
+	runtime.KeyringOptions.Backend = "keychain"
+	ctx := app.WithRuntime(withTestClientResolver(context.Background()), runtime)
 	err := cmd.Run(ctx, &RootFlags{})
 
 	if err == nil {

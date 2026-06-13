@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func newCmdRuntimeIOContext(t *testing.T, stdin io.Reader, stdout, stderr io.Wri
 		In:  stdin,
 		Out: stdout,
 		Err: stderr,
-	}})
+	}, KeyringOptions: testKeyringOptions()})
 }
 
 func newCmdJSONContext(t *testing.T) context.Context {
@@ -65,6 +66,9 @@ func withTestRuntime(ctx context.Context, configure func(*app.Runtime)) context.
 	runtime := &app.Runtime{}
 	if existing, ok := app.FromContext(ctx); ok {
 		*runtime = *existing
+	}
+	if runtime.KeyringOptions == nil {
+		runtime.KeyringOptions = testKeyringOptions()
 	}
 	configure(runtime)
 	return app.WithRuntime(ctx, runtime)
@@ -127,7 +131,16 @@ func runtimeWithAuthStore(store secrets.Store) *app.Runtime {
 			return secretStore, nil
 		}
 	}
-	return &app.Runtime{Auth: operations}
+	return &app.Runtime{Auth: operations, KeyringOptions: testKeyringOptions()}
+}
+
+func testKeyringOptions() *secrets.OpenOptions {
+	return &secrets.OpenOptions{
+		Backend:     "file",
+		Password:    "test-password",
+		PasswordSet: true,
+		GOOS:        goruntime.GOOS,
+	}
 }
 
 func rootFlagsWithAuthStore(flags *RootFlags, store secrets.Store) *RootFlags {
@@ -166,6 +179,9 @@ func executeWithTestRuntime(t *testing.T, args []string, runtime *app.Runtime) e
 	} else {
 		runtimeCopy := *runtime
 		runtime = &runtimeCopy
+	}
+	if runtime.KeyringOptions == nil {
+		runtime.KeyringOptions = testKeyringOptions()
 	}
 	runtime.IO = app.IO{
 		In:  strings.NewReader(""),

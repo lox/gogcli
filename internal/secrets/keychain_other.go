@@ -9,11 +9,6 @@ func IsKeychainLockedError(_ string) bool {
 	return false
 }
 
-// EnsureKeychainAccess is a no-op on non-macOS platforms.
-func EnsureKeychainAccess() error {
-	return nil
-}
-
 // EnsureKeychainAccessContext is a no-op on non-macOS platforms.
 func EnsureKeychainAccessContext(context.Context) error {
 	return nil

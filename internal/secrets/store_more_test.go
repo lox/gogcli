@@ -212,27 +212,32 @@ func TestKeyringStoreSetTokenErrors(t *testing.T) {
 }
 
 func TestSetSecretMissingKey(t *testing.T) {
-	if err := SetSecret(" ", []byte("data")); !errors.Is(err, errMissingSecretKey) {
+	store := &KeyringStore{ring: keyring.NewArrayKeyring(nil)}
+	if err := store.SetSecret(" ", []byte("data")); !errors.Is(err, errMissingSecretKey) {
 		t.Fatalf("expected missing key, got %v", err)
 	}
 }
 
 func TestDeleteSecretMissingKey(t *testing.T) {
-	if err := DeleteSecret(" "); !errors.Is(err, errMissingSecretKey) {
+	store := &KeyringStore{ring: keyring.NewArrayKeyring(nil)}
+	if err := store.DeleteSecret(" "); !errors.Is(err, errMissingSecretKey) {
 		t.Fatalf("expected missing key, got %v", err)
 	}
 }
 
-func TestOpenDefaultError(t *testing.T) {
-	origOpen := openKeyringFunc
-
-	t.Cleanup(func() { openKeyringFunc = origOpen })
-
-	openKeyringFunc = func() (keyring.Keyring, error) {
-		return nil, errTestKeychain
+func TestOpenError(t *testing.T) {
+	layout := config.Layout{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
+	options := OpenOptions{
+		Layout:  layout,
+		Config:  config.NewConfigStore(layout),
+		Backend: "file",
+		GOOS:    runtime.GOOS,
+		openKeyringFn: func(keyring.Config) (keyring.Keyring, error) {
+			return nil, errTestKeychain
+		},
 	}
 
-	if _, err := OpenDefault(); err == nil {
+	if _, err := Open(options); err == nil {
 		t.Fatalf("expected error")
 	}
 }
@@ -792,14 +797,10 @@ func TestGetTokenLegacyMigrationVerifiesWrite(t *testing.T) {
 
 func TestSetSecretSetsLabel(t *testing.T) {
 	ring := keyring.NewArrayKeyring(nil)
-	origOpen := openKeyringFunc
-
-	t.Cleanup(func() { openKeyringFunc = origOpen })
-
-	openKeyringFunc = func() (keyring.Keyring, error) { return ring, nil }
+	store := &KeyringStore{ring: ring}
 
 	key := "test/secret"
-	if err := SetSecret(key, []byte("value")); err != nil {
+	if err := store.SetSecret(key, []byte("value")); err != nil {
 		t.Fatalf("SetSecret: %v", err)
 	}
 
@@ -815,18 +816,14 @@ func TestSetSecretSetsLabel(t *testing.T) {
 
 func TestDeleteSecretDeletesKey(t *testing.T) {
 	ring := keyring.NewArrayKeyring(nil)
-	origOpen := openKeyringFunc
-
-	t.Cleanup(func() { openKeyringFunc = origOpen })
-
-	openKeyringFunc = func() (keyring.Keyring, error) { return ring, nil }
+	store := &KeyringStore{ring: ring}
 
 	key := "test/secret"
-	if err := SetSecret(key, []byte("value")); err != nil {
+	if err := store.SetSecret(key, []byte("value")); err != nil {
 		t.Fatalf("SetSecret: %v", err)
 	}
 
-	if err := DeleteSecret(key); err != nil {
+	if err := store.DeleteSecret(key); err != nil {
 		t.Fatalf("DeleteSecret: %v", err)
 	}
 
@@ -836,13 +833,9 @@ func TestDeleteSecretDeletesKey(t *testing.T) {
 }
 
 func TestSetSecretVerifyCatchesEmptyWrite(t *testing.T) {
-	origOpen := openKeyringFunc
+	store := &KeyringStore{ring: &silentDropKeyring{}}
 
-	t.Cleanup(func() { openKeyringFunc = origOpen })
-
-	openKeyringFunc = func() (keyring.Keyring, error) { return &silentDropKeyring{}, nil }
-
-	err := SetSecret("test/secret", []byte("value"))
+	err := store.SetSecret("test/secret", []byte("value"))
 	if err == nil {
 		t.Fatal("expected error when keyring silently drops data")
 	}

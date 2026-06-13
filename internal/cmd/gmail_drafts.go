@@ -256,6 +256,7 @@ type GmailDraftsCreateCmd struct {
 	Body             string   `name:"body" help:"Body (plain text; required unless --body-html is set)"`
 	BodyFile         string   `name:"body-file" help:"Body file path (plain text; '-' for stdin)"`
 	BodyHTML         string   `name:"body-html" help:"Body (HTML; optional)"`
+	BodyHTMLFile     string   `name:"body-html-file" help:"HTML body file path ('-' for stdin)"`
 	ReplyToMessageID string   `name:"reply-to-message-id" help:"Reply to Gmail message ID (sets In-Reply-To/References and thread)"`
 	ThreadID         string   `name:"thread-id" help:"Reply within a Gmail thread (uses latest message for headers)"`
 	ReplyTo          string   `name:"reply-to" help:"Reply-To header address"`
@@ -289,7 +290,7 @@ func (c draftComposeInput) validate() error {
 		return usage("required: --subject")
 	}
 	if strings.TrimSpace(c.Body) == "" && strings.TrimSpace(c.BodyHTML) == "" {
-		return usage("required: --body, --body-file, or --body-html")
+		return usage("required: --body, --body-file, --body-html, or --body-html-file")
 	}
 	return nil
 }
@@ -525,7 +526,7 @@ func messageFromMatchesAccount(msg *gmail.Message, account string) bool {
 func (c *GmailDraftsCreateCmd) Run(ctx context.Context, flags *RootFlags) error {
 	u := ui.FromContext(ctx)
 
-	body, err := resolveBodyInput(ctx, c.Body, c.BodyFile)
+	body, htmlBody, err := resolveComposeBodyInputs(ctx, c.Body, c.BodyFile, c.BodyHTML, c.BodyHTMLFile)
 	if err != nil {
 		return err
 	}
@@ -549,7 +550,7 @@ func (c *GmailDraftsCreateCmd) Run(ctx context.Context, flags *RootFlags) error 
 		Bcc:              c.Bcc,
 		Subject:          c.Subject,
 		Body:             body,
-		BodyHTML:         c.BodyHTML,
+		BodyHTML:         htmlBody,
 		ReplyToMessageID: replyToMessageID,
 		ReplyToThreadID:  threadID,
 		ReplyTo:          c.ReplyTo,
@@ -607,6 +608,7 @@ type GmailDraftsUpdateCmd struct {
 	Body             string   `name:"body" help:"Body (plain text; required unless --body-html is set)"`
 	BodyFile         string   `name:"body-file" help:"Body file path (plain text; '-' for stdin)"`
 	BodyHTML         string   `name:"body-html" help:"Body (HTML; optional)"`
+	BodyHTMLFile     string   `name:"body-html-file" help:"HTML body file path ('-' for stdin)"`
 	ReplyToMessageID string   `name:"reply-to-message-id" help:"Reply to Gmail message ID (sets In-Reply-To/References and thread)"`
 	ThreadID         string   `name:"thread-id" help:"Reply within a Gmail thread (uses latest message for headers); overrides the draft's existing thread"`
 	ReplyTo          string   `name:"reply-to" help:"Reply-To header address"`
@@ -630,7 +632,7 @@ func (c *GmailDraftsUpdateCmd) Run(ctx context.Context, flags *RootFlags) error 
 		to = *c.To
 	}
 
-	body, err := resolveBodyInput(ctx, c.Body, c.BodyFile)
+	body, htmlBody, err := resolveComposeBodyInputs(ctx, c.Body, c.BodyFile, c.BodyHTML, c.BodyHTMLFile)
 	if err != nil {
 		return err
 	}
@@ -658,7 +660,7 @@ func (c *GmailDraftsUpdateCmd) Run(ctx context.Context, flags *RootFlags) error 
 		Bcc:              c.Bcc,
 		Subject:          c.Subject,
 		Body:             body,
-		BodyHTML:         c.BodyHTML,
+		BodyHTML:         htmlBody,
 		ReplyToMessageID: replyToMessageID,
 		ReplyToThreadID:  threadID,
 		ReplyTo:          c.ReplyTo,

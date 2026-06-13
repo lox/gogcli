@@ -12,15 +12,18 @@
 - Backup: bind configuration, legacy fallback, and home expansion to the selected runtime layout instead of process-global path state.
 - Classroom: require an archived course before deletion with actionable lifecycle guidance, and prevent live tests from leaving consumer-account courses behind.
 - Forms: validate scale question bounds locally and document the Forms API's accepted minimum and maximum values.
+- Groups and Calendar team: reject consumer accounts and stored user OAuth before Cloud Identity API calls, require an explicit account for identity-based direct-token/ADC searches, keep ADC precedence consistent across services, and provide recovery guidance for service-account, direct-token, and ADC auth.
 - Gmail: bind watch state to the selected runtime state directory and serialize atomic updates across concurrent watch processes.
 - Gmail: bind tracking configuration to the selected runtime state directory and preserve concurrent account updates with shared atomic locking.
 - Gmail: bind tracking encryption and admin keys to the active runtime secret store instead of reopening the ambient keyring.
 - Auth: avoid repeated macOS Keychain prompts during token export and auth listing by keeping exports read-only and stopping fallback reads after keyring timeouts. (#772) — thanks @lox.
+- Gmail: add `--body-html-file` to draft create and update, including stdin support, for parity with send. (#774, #776) — thanks @TurboTheTurtle.
 - Zoom: bind credential metadata and encrypted secret/token storage to the selected runtime layout, with consistent alias canonicalization.
 - Auth: bind temporary manual OAuth state to the selected runtime config directory and reject unsafe redirect state values before filesystem access.
 - Auth: bind renamed-account alias, client, and default-account migration to the active runtime config store.
 - Auth: bind OAuth client credential commands to the active runtime secret store instead of reopening the ambient keyring.
 - Auth: bind Google API and OAuth flows to the active runtime credential and token repositories instead of reopening ambient config and keyring state.
+- Auth: capture keyring backend, password, service, platform, D-Bus, terminal, and lock policy once per runtime instead of rereading ambient process state.
 - Time: honor the runtime-selected `default_timezone` in `time now`, Gmail timestamps, watch output, Calendar time, and generated email Date headers instead of reading ambient config.
 - Config: bind account and calendar alias management and resolution to the active runtime config store.
 - Docs: document publishing personal External OAuth apps before authorization to avoid Google's seven-day Testing refresh-token expiry.

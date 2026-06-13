@@ -76,19 +76,6 @@ func (s *KeyringStore) GetSecret(key string) ([]byte, error) {
 	return item.Data, nil
 }
 
-func DeleteSecret(key string) error {
-	store, err := openDefaultRepository()
-	if err != nil {
-		return err
-	}
-
-	if err := store.DeleteSecret(key); err != nil {
-		return fmt.Errorf("delete secret: %w", err)
-	}
-
-	return nil
-}
-
 func (s *KeyringStore) DeleteSecret(key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {

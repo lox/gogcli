@@ -23,7 +23,7 @@ Generated pages: 642.
 - [gog drive](gog-drive.md) - Google Drive
 - [gog forms](gog-forms.md) - Google Forms
 - [gog gmail](gog-gmail.md) - Gmail
-- [gog groups](gog-groups.md) - Google Groups
+- [gog groups](gog-groups.md) - Cloud Identity Groups (Workspace only)
 - [gog keep](gog-keep.md) - Google Keep (Workspace only)
 - [gog login](gog-login.md) - Authorize and store a refresh token (alias for 'auth add')
 - [gog logout](gog-logout.md) - Remove a stored refresh token (alias for 'auth remove')
@@ -149,7 +149,7 @@ Generated pages: 642.
     - [gog calendar respond](gog-calendar-respond.md) - Respond to an event invitation
     - [gog calendar search](gog-calendar-search.md) - Search events
     - [gog calendar subscribe](gog-calendar-subscribe.md) - Add a calendar to your calendar list
-    - [gog calendar team](gog-calendar-team.md) - Show events for all members of a Google Group
+    - [gog calendar team](gog-calendar-team.md) - Show events for Workspace group members (service account, direct token, or ADC)
     - [gog calendar time](gog-calendar-time.md) - Show server time
     - [gog calendar update](gog-calendar-update.md) - Update an event
     - [gog calendar users](gog-calendar-users.md) - List workspace users (use their email as calendar ID)
@@ -501,7 +501,7 @@ Generated pages: 642.
     - [gog gmail trash](gog-gmail-trash.md) - Move messages to trash
     - [gog gmail unread](gog-gmail-unread.md) - Mark messages as unread
     - [gog gmail url](gog-gmail-url.md) - Print Gmail web URLs for threads
-  - [gog groups](gog-groups.md) - Google Groups
+  - [gog groups](gog-groups.md) - Cloud Identity Groups (Workspace only)
     - [gog groups list](gog-groups-list.md) - List groups you belong to
     - [gog groups members](gog-groups-members.md) - List members of a group
   - [gog keep](gog-keep.md) - Google Keep (Workspace only)

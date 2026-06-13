@@ -3,12 +3,14 @@ package secrets
 import (
 	"errors"
 	"os"
-	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/99designs/keyring"
+
+	"github.com/steipete/gogcli/internal/config"
 )
 
 var (
@@ -201,22 +203,25 @@ func TestFileSafeKeyringTreatsInvalidLegacyFilenameAsNotFound(t *testing.T) {
 }
 
 func TestOpenKeyringWrapsExplicitFileBackend(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
-	t.Setenv("GOG_KEYRING_BACKEND", "file")
-	t.Setenv("GOG_KEYRING_PASSWORD", "test-pass")
-
-	origOpen := keyringOpenFunc
-	keyringOpenFunc = func(_ keyring.Config) (keyring.Keyring, error) {
-		return keyring.NewArrayKeyring(nil), nil
+	layout := config.Layout{
+		ConfigDir: t.TempDir(),
+		DataDir:   t.TempDir(),
+	}
+	options := OpenOptions{
+		Layout:      layout,
+		Config:      config.NewConfigStore(layout),
+		Backend:     "file",
+		Password:    "test-pass",
+		PasswordSet: true,
+		GOOS:        runtime.GOOS,
+		openKeyringFn: func(_ keyring.Config) (keyring.Keyring, error) {
+			return keyring.NewArrayKeyring(nil), nil
+		},
 	}
 
-	t.Cleanup(func() { keyringOpenFunc = origOpen })
-
-	store, err := OpenDefault()
+	store, err := Open(options)
 	if err != nil {
-		t.Fatalf("OpenDefault: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
 
 	keyringStore, ok := store.(*KeyringStore)

@@ -98,7 +98,7 @@ Generated from `gog schema --json`.
     - [`gog calendar (cal) respond (rsvp,reply) <calendarId> <eventId> [flags]`](commands/gog-calendar-respond.md) - Respond to an event invitation
     - [`gog calendar (cal) search (find,query) <query> [flags]`](commands/gog-calendar-search.md) - Search events
     - [`gog calendar (cal) subscribe (sub,add-calendar) <calendarId> [flags]`](commands/gog-calendar-subscribe.md) - Add a calendar to your calendar list
-    - [`gog calendar (cal) team <group-email> [flags]`](commands/gog-calendar-team.md) - Show events for all members of a Google Group
+    - [`gog calendar (cal) team <group-email> [flags]`](commands/gog-calendar-team.md) - Show events for Workspace group members (service account, direct token, or ADC)
     - [`gog calendar (cal) time [flags]`](commands/gog-calendar-time.md) - Show server time
     - [`gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]`](commands/gog-calendar-update.md) - Update an event
     - [`gog calendar (cal) users [flags]`](commands/gog-calendar-users.md) - List workspace users (use their email as calendar ID)
@@ -450,7 +450,7 @@ Generated from `gog schema --json`.
     - [`gog gmail (mail,email) trash [<messageId> ...] [flags]`](commands/gog-gmail-trash.md) - Move messages to trash
     - [`gog gmail (mail,email) unread (mark-unread) [<messageId> ...] [flags]`](commands/gog-gmail-unread.md) - Mark messages as unread
     - [`gog gmail (mail,email) url <threadId> ...`](commands/gog-gmail-url.md) - Print Gmail web URLs for threads
-  - [`gog groups (group) <command> [flags]`](commands/gog-groups.md) - Google Groups
+  - [`gog groups (group) <command> [flags]`](commands/gog-groups.md) - Cloud Identity Groups (Workspace only)
     - [`gog groups (group) list (ls) [flags]`](commands/gog-groups-list.md) - List groups you belong to
     - [`gog groups (group) members <groupEmail> [flags]`](commands/gog-groups-members.md) - List members of a group
   - [`gog keep <command> [flags]`](commands/gog-keep.md) - Google Keep (Workspace only)

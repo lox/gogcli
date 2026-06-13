@@ -114,6 +114,9 @@ deadcode: tools
 	output_file="$$(mktemp)"; \
 	trap 'rm -f "$$output_file"' EXIT; \
 	$(DEADCODE) -test ./... > "$$output_file"; \
+	if [ "$$(go env GOOS)" != "linux" ]; then \
+		GOOS=linux GOARCH=amd64 $(DEADCODE) -test ./... >> "$$output_file"; \
+	fi; \
 	if [ -s "$$output_file" ]; then \
 		cat "$$output_file"; \
 		exit 1; \

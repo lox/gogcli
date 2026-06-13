@@ -2,10 +2,15 @@ package googleapi
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"golang.org/x/oauth2"
+
+	"github.com/steipete/gogcli/internal/authclient"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/googleauth"
 	"github.com/steipete/gogcli/internal/secrets"
@@ -83,10 +88,6 @@ func TestNewServicesWithStoredToken(t *testing.T) {
 		t.Fatalf("NewKeep: %v", err)
 	}
 
-	if _, err := NewCloudIdentityGroups(ctx, "a@b.com"); err != nil {
-		t.Fatalf("NewCloudIdentityGroups: %v", err)
-	}
-
 	if _, err := NewPeopleContacts(ctx, "a@b.com"); err != nil {
 		t.Fatalf("NewPeopleContacts: %v", err)
 	}
@@ -108,6 +109,142 @@ func TestNewKeepWithServiceAccountErrors(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "read service account file") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewCloudIdentityGroupsAuthErrorUsesGroupsLabel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
+
+	origRead := readClientCredentials
+	origOpen := openSecretsStore
+
+	t.Cleanup(func() {
+		readClientCredentials = origRead
+		openSecretsStore = origOpen
+	})
+
+	readClientCredentials = func(string) (config.ClientCredentials, error) {
+		t.Fatal("OAuth client credentials must not be read for Groups")
+		return config.ClientCredentials{}, errBoom
+	}
+	openSecretsStore = func() (secrets.Store, error) {
+		t.Fatal("OAuth token store must not be opened for Groups")
+		return nil, errBoom
+	}
+
+	_, err := NewCloudIdentityGroups(testClientResolverContext(), "admin@example.com")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var authErr *AuthRequiredError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("expected AuthRequiredError, got %T: %v", err, err)
+	}
+
+	if authErr.Service != "groups" {
+		t.Fatalf("service = %q, want groups", authErr.Service)
+	}
+}
+
+func TestNewCloudIdentityGroupsUsesDirectToken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
+
+	ctx := authclient.WithAccessToken(testClientResolverContext(), "direct-token")
+
+	if _, err := NewCloudIdentityGroups(ctx, "admin@example.com"); err != nil {
+		t.Fatalf("NewCloudIdentityGroups: %v", err)
+	}
+}
+
+func TestNewCloudIdentityGroupsUsesADC(t *testing.T) {
+	t.Setenv("GOG_AUTH_MODE", "adc")
+
+	origADC := newADCTokenSource
+
+	t.Cleanup(func() { newADCTokenSource = origADC })
+
+	newADCTokenSource = func(_ context.Context, scopes ...string) (oauth2.TokenSource, error) {
+		if len(scopes) != 1 || scopes[0] != scopeCloudIdentityGroupsRO {
+			t.Fatalf("scopes = %#v", scopes)
+		}
+
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "adc-token"}), nil
+	}
+
+	if _, err := NewCloudIdentityGroups(testClientResolverContext(), "admin@example.com"); err != nil {
+		t.Fatalf("NewCloudIdentityGroups: %v", err)
+	}
+}
+
+func TestNewCloudIdentityGroupsADCPrecedesDirectToken(t *testing.T) {
+	t.Setenv("GOG_AUTH_MODE", "adc")
+
+	origADC := newADCTokenSource
+
+	t.Cleanup(func() { newADCTokenSource = origADC })
+
+	adcCalled := false
+	newADCTokenSource = func(_ context.Context, scopes ...string) (oauth2.TokenSource, error) {
+		adcCalled = true
+
+		if len(scopes) != 1 || scopes[0] != scopeCloudIdentityGroupsRO {
+			t.Fatalf("scopes = %#v", scopes)
+		}
+
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "adc-token"}), nil
+	}
+
+	ctx := authclient.WithAccessToken(testClientResolverContext(), "direct-token")
+	if _, err := NewCloudIdentityGroups(ctx, "admin@example.com"); err != nil {
+		t.Fatalf("NewCloudIdentityGroups: %v", err)
+	}
+
+	if !adcCalled {
+		t.Fatal("expected ADC token source to take precedence")
+	}
+}
+
+func TestNewCloudIdentityGroupsUsesRequiredServiceAccount(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
+
+	saPath, err := config.ServiceAccountPath("admin@example.com")
+	if err != nil {
+		t.Fatalf("ServiceAccountPath: %v", err)
+	}
+
+	if _, err := config.EnsureDataDir(); err != nil {
+		t.Fatalf("EnsureDataDir: %v", err)
+	}
+
+	if err := os.WriteFile(saPath, []byte(`{"type":"service_account"}`), 0o600); err != nil {
+		t.Fatalf("write service account: %v", err)
+	}
+
+	origSA := newServiceAccountTokenSource
+
+	t.Cleanup(func() { newServiceAccountTokenSource = origSA })
+
+	newServiceAccountTokenSource = func(_ context.Context, _ []byte, subject string, scopes []string) (oauth2.TokenSource, error) {
+		if subject != "admin@example.com" {
+			t.Fatalf("subject = %q", subject)
+		}
+
+		if len(scopes) != 1 || scopes[0] != scopeCloudIdentityGroupsRO {
+			t.Fatalf("scopes = %#v", scopes)
+		}
+
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "service-account-token"}), nil
+	}
+
+	if _, err := NewCloudIdentityGroups(testClientResolverContext(), "admin@example.com"); err != nil {
+		t.Fatalf("NewCloudIdentityGroups: %v", err)
 	}
 }
 
