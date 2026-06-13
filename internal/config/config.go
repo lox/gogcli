@@ -26,17 +26,38 @@ type File struct {
 
 var errConfigLockTimeout = errors.New("acquire config lock timeout")
 
+type ConfigStore struct {
+	layout Layout
+}
+
+func NewConfigStore(layout Layout) *ConfigStore {
+	return &ConfigStore{layout: layout}
+}
+
 func ConfigPath() (string, error) {
-	layout, err := currentLayoutFor(PathKindConfig)
+	store, err := defaultConfigStore()
 	if err != nil {
 		return "", err
 	}
 
-	return layout.ConfigPath(), nil
+	return store.Path(), nil
 }
 
-func configLockPath() (string, error) {
-	dir, err := EnsureDir()
+func (s *ConfigStore) Path() string {
+	return s.layout.ConfigPath()
+}
+
+func (s *ConfigStore) ensureDir() (string, error) {
+	dir := s.layout.ConfigDir
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("ensure config dir: %w", err)
+	}
+
+	return dir, nil
+}
+
+func (s *ConfigStore) lockPath() (string, error) {
+	dir, err := s.ensureDir()
 	if err != nil {
 		return "", fmt.Errorf("ensure config dir: %w", err)
 	}
@@ -44,8 +65,8 @@ func configLockPath() (string, error) {
 	return filepath.Join(dir, "config.lock"), nil
 }
 
-func acquireConfigLock() (func(), error) {
-	path, err := configLockPath()
+func (s *ConfigStore) acquireLock() (func(), error) {
+	path, err := s.lockPath()
 	if err != nil {
 		return nil, err
 	}
@@ -74,25 +95,31 @@ func acquireConfigLock() (func(), error) {
 }
 
 func WriteConfig(cfg File) error {
-	unlock, err := acquireConfigLock()
+	store, err := defaultConfigStore()
+	if err != nil {
+		return err
+	}
+
+	return store.Write(cfg)
+}
+
+func (s *ConfigStore) Write(cfg File) error {
+	unlock, err := s.acquireLock()
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	return writeConfigFile(cfg)
+	return s.write(cfg)
 }
 
-func writeConfigFile(cfg File) error {
-	_, err := EnsureDir()
+func (s *ConfigStore) write(cfg File) error {
+	_, err := s.ensureDir()
 	if err != nil {
 		return fmt.Errorf("ensure config dir: %w", err)
 	}
 
-	path, err := ConfigPath()
-	if err != nil {
-		return err
-	}
+	path := s.Path()
 
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -109,13 +136,22 @@ func writeConfigFile(cfg File) error {
 }
 
 func UpdateConfig(update func(*File) error) error {
-	unlock, err := acquireConfigLock()
+	store, err := defaultConfigStore()
+	if err != nil {
+		return err
+	}
+
+	return store.Update(update)
+}
+
+func (s *ConfigStore) Update(update func(*File) error) error {
+	unlock, err := s.acquireLock()
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	cfg, err := ReadConfig()
+	cfg, err := s.Read()
 	if err != nil {
 		return err
 	}
@@ -124,7 +160,7 @@ func UpdateConfig(update func(*File) error) error {
 		return err
 	}
 
-	return writeConfigFile(cfg)
+	return s.write(cfg)
 }
 
 // WriteFileAtomic writes data to path via a same-directory temp file and rename.
@@ -168,10 +204,16 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 func ConfigExists() (bool, error) {
-	path, err := ConfigPath()
+	store, err := defaultConfigStore()
 	if err != nil {
 		return false, err
 	}
+
+	return store.Exists()
+}
+
+func (s *ConfigStore) Exists() (bool, error) {
+	path := s.Path()
 
 	if _, statErr := os.Stat(path); statErr != nil {
 		if os.IsNotExist(statErr) {
@@ -185,10 +227,16 @@ func ConfigExists() (bool, error) {
 }
 
 func ReadConfig() (File, error) {
-	path, err := ConfigPath()
+	store, err := defaultConfigStore()
 	if err != nil {
 		return File{}, err
 	}
+
+	return store.Read()
+}
+
+func (s *ConfigStore) Read() (File, error) {
+	path := s.Path()
 
 	b, err := os.ReadFile(path) //nolint:gosec // config file path
 	if err != nil {
@@ -205,4 +253,13 @@ func ReadConfig() (File, error) {
 	}
 
 	return cfg, nil
+}
+
+func defaultConfigStore() (*ConfigStore, error) {
+	layout, err := currentLayoutFor(PathKindConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewConfigStore(layout), nil
 }
