@@ -1,8 +1,6 @@
 package cmd
 
-import (
-	"testing"
-)
+import "testing"
 
 // FuzzParseSedExpr fuzzes the sed expression parser with arbitrary input.
 // It ensures no panics on malformed expressions.
@@ -141,36 +139,6 @@ func FuzzParseTableCreate(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, input string) {
 		parseTableCreate(input)
-	})
-}
-
-// FuzzParseImageSyntax fuzzes the markdown image syntax parser.
-func FuzzParseImageSyntax(f *testing.F) {
-	seeds := []string{
-		"![alt](https://example.com/image.png)",
-		"![](https://example.com/image.png)",
-		`![alt](https://example.com/image.png "title")`,
-		"![alt](url =100x200)",
-		"![alt](url =100x)",
-		"![alt](url =x200)",
-		"![alt](url width=100 height=200)",
-		"![alt](url width=100px)",
-		"not an image",
-		"",
-		"![",
-		"![]()",
-		"![](",
-		"![alt]",
-		"![alt](",
-		"![alt](url =0x0)",
-		"![alt](url =-1x-1)",
-	}
-	for _, s := range seeds {
-		f.Add(s)
-	}
-
-	f.Fuzz(func(t *testing.T, input string) {
-		parseImageSyntax(input)
 	})
 }
 

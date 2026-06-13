@@ -116,7 +116,7 @@ func TestParseImageSyntax(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseImageSyntax(tt.input)
+			got := docssed.ParseImageSyntax(tt.input)
 			if tt.wantNil {
 				if got != nil {
 					t.Errorf("parseImageSyntax(%q) = %+v, want nil", tt.input, got)
@@ -239,7 +239,7 @@ func TestImageShorthandSyntax(t *testing.T) {
 				return
 			}
 
-			img := parseImageSyntax(tt.input)
+			img := docssed.ParseImageSyntax(tt.input)
 			if tt.wantNil {
 				if img != nil {
 					t.Errorf("parseImageSyntax(%q) = %+v, want nil", tt.input, img)

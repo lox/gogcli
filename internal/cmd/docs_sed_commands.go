@@ -7,6 +7,7 @@ import (
 
 	"google.golang.org/api/docs/v1"
 
+	"github.com/steipete/gogcli/internal/docssed"
 	"github.com/steipete/gogcli/internal/ui"
 )
 
@@ -400,6 +401,11 @@ func (c *DocsSedCmd) runAddressedInsert(ctx context.Context, u *ui.UI, account, 
 
 // runAddressedSubstitute applies a substitution only within the addressed paragraph(s).
 func (c *DocsSedCmd) runAddressedSubstitute(ctx context.Context, u *ui.UI, account, id, tabID string, expr sedExpr) error {
+	planner, err := docssed.NewMatchPlanner(semanticExpressionFromSedExpr(expr))
+	if err != nil {
+		return err
+	}
+
 	docsSvc, err := docsService(ctx, account)
 	if err != nil {
 		return err
@@ -415,58 +421,38 @@ func (c *DocsSedCmd) runAddressedSubstitute(ctx context.Context, u *ui.UI, accou
 		return err
 	}
 
-	re, compileErr := expr.compilePattern()
-	if compileErr != nil {
-		return fmt.Errorf("compile pattern: %w", compileErr)
-	}
-
-	// For each target paragraph, find matches and apply substitutions.
-	// Work in reverse order to preserve indices.
-	var requests []*docs.Request
-	replaced := 0
-
-	for i := len(targets) - 1; i >= 0; i-- {
-		para := targets[i]
-		text := para.Text
-
-		matches := re.FindAllStringIndex(text, -1)
-		if len(matches) == 0 {
+	paragraphs := make([]docssed.DocumentParagraph, 0, len(targets))
+	for _, target := range targets {
+		if target.ElemType != "paragraph" {
 			continue
 		}
+		paragraphs = append(paragraphs, docssed.DocumentParagraph{
+			Text:       target.Text,
+			StartIndex: target.StartIndex,
+			EndIndex:   target.EndIndex,
+		})
+	}
+	actions := planner.PlanParagraphs(paragraphs)
 
-		if !expr.global {
-			matches = matches[:1]
-		}
-
-		// Process matches in reverse order within this paragraph
-		for j := len(matches) - 1; j >= 0; j-- {
-			m := matches[j]
-			matchText := text[m[0]:m[1]]
-			replText := re.ReplaceAllString(matchText, expr.replacement)
-			// Unescape Go regex $$ to literal $ after regex expansion.
-			// Keep expanded whole-match/capture substitutions intact.
-			replText = strings.ReplaceAll(replText, "$$", "$")
-
-			absStart := para.StartIndex + int64(m[0])
-			absEnd := para.StartIndex + int64(m[1])
-
-			requests = append(requests, &docs.Request{
-				DeleteContentRange: &docs.DeleteContentRangeRequest{
-					Range: &docs.Range{
-						StartIndex: absStart,
-						EndIndex:   absEnd,
-						TabId:      pm.TabID,
-					},
+	// Apply in reverse document order so earlier Docs indices remain stable.
+	requests := make([]*docs.Request, 0, len(actions)*2)
+	for index := len(actions) - 1; index >= 0; index-- {
+		action := actions[index]
+		requests = append(requests, &docs.Request{
+			DeleteContentRange: &docs.DeleteContentRangeRequest{
+				Range: &docs.Range{
+					StartIndex: action.StartIndex,
+					EndIndex:   action.EndIndex,
+					TabId:      pm.TabID,
 				},
-			})
-			requests = append(requests, &docs.Request{
-				InsertText: &docs.InsertTextRequest{
-					Location: &docs.Location{Index: absStart, TabId: pm.TabID},
-					Text:     replText,
-				},
-			})
-			replaced++
-		}
+			},
+		})
+		requests = append(requests, &docs.Request{
+			InsertText: &docs.InsertTextRequest{
+				Location: &docs.Location{Index: action.StartIndex, TabId: pm.TabID},
+				Text:     action.Replacement.ExpandedText,
+			},
+		})
 	}
 
 	if len(requests) == 0 {
@@ -477,5 +463,5 @@ func (c *DocsSedCmd) runAddressedSubstitute(ctx context.Context, u *ui.UI, accou
 		return fmt.Errorf("batch update (addressed substitute): %w", err)
 	}
 
-	return sedOutputOK(ctx, u, id, sedOutputKV{Key: "replaced", Value: replaced})
+	return sedOutputOK(ctx, u, id, sedOutputKV{Key: "replaced", Value: len(actions)})
 }

@@ -6,12 +6,13 @@ import (
 
 	"google.golang.org/api/docs/v1"
 
+	"github.com/steipete/gogcli/internal/docssed"
 	"github.com/steipete/gogcli/internal/ui"
 )
 
 func (c *DocsSedCmd) doPositionalInsert(ctx context.Context, docsSvc *docs.Service, u *ui.UI, id string, idx int64, replacement string) error {
 	// Check for image syntax first
-	imgSpec := parseImageSyntax(replacement)
+	imgSpec := docssed.ParseImageSyntax(replacement)
 
 	// Check for table creation (explicit |RxC| or pipe-table syntax)
 	tableSpec := parseTableCreate(replacement)

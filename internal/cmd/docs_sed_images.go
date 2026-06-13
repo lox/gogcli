@@ -48,12 +48,12 @@ func (c *DocsSedCmd) runImageReplace(ctx context.Context, u *ui.UI, account, doc
 	// Parse replacement - could be new image, text, or empty (delete)
 	var requests []*docs.Request
 	isDelete := replacement == ""
-	newImage := parseImageSyntax(replacement)
+	newImage := docssed.ParseImageSyntax(replacement)
 	if newImage == nil && strings.HasPrefix(replacement, "!(") && strings.HasSuffix(replacement, ")") {
 		// Check for !(url) shorthand
 		inner := replacement[2 : len(replacement)-1]
 		if strings.HasPrefix(inner, "http://") || strings.HasPrefix(inner, "https://") {
-			newImage = &ImageSpec{URL: inner}
+			newImage = &docssed.ImageSpec{URL: inner}
 		}
 	}
 
@@ -146,15 +146,6 @@ func (c *DocsSedCmd) runImageReplace(ctx context.Context, u *ui.UI, account, doc
 	return sedOutputOK(ctx, u, docID, sedOutputKV{"replaced", len(matched)})
 }
 
-// ImageSpec holds the URL and optional dimensions for an inline image insertion.
-type ImageSpec struct {
-	URL     string
-	Alt     string
-	Caption string // from title in ![alt](url "title")
-	Width   int    // in pixels, 0 if not specified
-	Height  int    // in pixels, 0 if not specified
-}
-
 // DocImage is the projection-owned image metadata used by the command executor.
 type DocImage = docssed.DocumentImage
 
@@ -197,73 +188,4 @@ func matchImages(images []DocImage, ref *ImageRefPattern) []DocImage {
 	}
 
 	return nil
-}
-
-// parseImageSyntax parses markdown image syntax: ![alt](url "title"){width=X height=Y}
-// Returns nil if the text is not an image
-func parseImageSyntax(text string) *ImageSpec {
-	// Must start with ![
-	if !strings.HasPrefix(text, "![") {
-		return nil
-	}
-
-	// Find the closing ] for alt text
-	altEnd := strings.Index(text, "](")
-	if altEnd == -1 {
-		return nil
-	}
-	alt := text[2:altEnd]
-
-	// Find the URL - starts after ]( and ends at ) or " or {
-	rest := text[altEnd+2:]
-
-	// Find where URL ends
-	urlEnd := -1
-	for i, c := range rest {
-		if c == '"' || c == ')' || c == '{' {
-			urlEnd = i
-			break
-		}
-	}
-	if urlEnd == -1 {
-		// URL goes to end, look for closing )
-		if strings.HasSuffix(rest, ")") {
-			urlEnd = len(rest) - 1
-		} else {
-			return nil
-		}
-	}
-
-	url := strings.TrimSpace(rest[:urlEnd])
-	rest = rest[urlEnd:]
-
-	spec := &ImageSpec{
-		URL: url,
-		Alt: alt,
-	}
-
-	// Parse optional title in quotes: "title")
-	if strings.HasPrefix(rest, " \"") || strings.HasPrefix(rest, "\"") {
-		rest = strings.TrimPrefix(rest, " ")
-		if strings.HasPrefix(rest, "\"") {
-			titleEnd := strings.Index(rest[1:], "\"")
-			if titleEnd != -1 {
-				spec.Caption = rest[1 : titleEnd+1]
-				rest = rest[titleEnd+2:]
-			}
-		}
-	}
-
-	// Skip closing paren if present
-	rest = strings.TrimPrefix(rest, ")")
-
-	// Parse optional Pandoc-style attributes: {width=X height=Y}
-	if strings.HasPrefix(rest, "{") {
-		attrEnd := strings.Index(rest, "}")
-		if attrEnd != -1 {
-			spec.Width, spec.Height = parseImageDimAttrs(rest[1:attrEnd])
-		}
-	}
-
-	return spec
 }

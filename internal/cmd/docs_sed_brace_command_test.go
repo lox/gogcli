@@ -5,6 +5,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/api/docs/v1"
+
+	"github.com/steipete/gogcli/internal/docssed"
 )
 
 func TestResolveHeading_AllValues(t *testing.T) {
@@ -33,6 +36,8 @@ func TestBuildBraceTextStyleRequests_ImplicitReset(t *testing.T) {
 
 func TestClassifyMatch_BraceImage(t *testing.T) {
 	expression := sedExpr{
+		pattern:     "hello",
+		replacement: "world",
 		brace: &braceExpr{
 			ImgRef: "https://example.com/img.png",
 			Width:  100,
@@ -40,7 +45,22 @@ func TestClassifyMatch_BraceImage(t *testing.T) {
 			Indent: indentNotSet,
 		},
 	}
-	match := classifyMatch(10, "hello", []int{0, 5}, "hello", "world", expression)
+	doc := &docs.Document{Body: &docs.Body{Content: []*docs.StructuralElement{{
+		StartIndex: 10,
+		EndIndex:   15,
+		Paragraph: &docs.Paragraph{
+			Elements: []*docs.ParagraphElement{{
+				StartIndex: 10,
+				EndIndex:   15,
+				TextRun:    &docs.TextRun{Content: "hello"},
+			}},
+		},
+	}}}}
+	planner, err := docssed.NewMatchPlanner(semanticExpressionFromSedExpr(expression))
+	require.NoError(t, err)
+	matches := findDocMatches(doc, planner)
+	require.Len(t, matches, 1)
+	match := matches[0]
 	assert.NotNil(t, match.image)
 	assert.Equal(t, "https://example.com/img.png", match.image.URL)
 	assert.Equal(t, 100, match.image.Width)
@@ -50,7 +70,22 @@ func TestClassifyMatch_BraceImage(t *testing.T) {
 }
 
 func TestClassifyMatch_PlainText(t *testing.T) {
-	match := classifyMatch(0, "foo", []int{0, 3}, "foo", "bar", sedExpr{})
+	doc := &docs.Document{Body: &docs.Body{Content: []*docs.StructuralElement{{
+		StartIndex: 0,
+		EndIndex:   3,
+		Paragraph: &docs.Paragraph{
+			Elements: []*docs.ParagraphElement{{
+				StartIndex: 0,
+				EndIndex:   3,
+				TextRun:    &docs.TextRun{Content: "foo"},
+			}},
+		},
+	}}}}
+	planner, err := docssed.NewMatchPlanner(docssed.Expression{Pattern: "foo", Replacement: "bar"})
+	require.NoError(t, err)
+	matches := findDocMatches(doc, planner)
+	require.Len(t, matches, 1)
+	match := matches[0]
 	assert.Nil(t, match.image)
 	assert.Equal(t, "bar", match.newText)
 }

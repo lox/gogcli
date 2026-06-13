@@ -339,14 +339,14 @@ func TestBuildCellReplaceRequests(t *testing.T) {
 }
 
 func TestBuildImageSizeSpec(t *testing.T) {
-	assert.Nil(t, buildImageSizeSpec(&ImageSpec{URL: "http://x.com/img.png"}))
+	assert.Nil(t, buildImageSizeSpec(&docssed.ImageSpec{URL: "http://x.com/img.png"}))
 
-	size := buildImageSizeSpec(&ImageSpec{URL: "http://x.com/img.png", Width: 100})
+	size := buildImageSizeSpec(&docssed.ImageSpec{URL: "http://x.com/img.png", Width: 100})
 	require.NotNil(t, size)
 	assert.NotNil(t, size.Width)
 	assert.Nil(t, size.Height)
 
-	size = buildImageSizeSpec(&ImageSpec{URL: "http://x.com/img.png", Width: 100, Height: 200})
+	size = buildImageSizeSpec(&docssed.ImageSpec{URL: "http://x.com/img.png", Width: 100, Height: 200})
 	require.NotNil(t, size)
 	assert.NotNil(t, size.Width)
 	assert.NotNil(t, size.Height)

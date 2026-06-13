@@ -89,7 +89,7 @@ const (
 )
 
 // buildImageSizeSpec returns a Size for the image spec, or nil if no dimensions set.
-func buildImageSizeSpec(spec *ImageSpec) *docs.Size {
+func buildImageSizeSpec(spec *docssed.ImageSpec) *docs.Size {
 	if spec.Width == 0 && spec.Height == 0 {
 		return nil
 	}

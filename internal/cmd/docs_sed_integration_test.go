@@ -58,6 +58,90 @@ func mockDocsServerAdvanced(t *testing.T, doc *docs.Document, onBatchUpdate func
 	}))
 }
 
+func TestRunAddressedSubstituteUsesUTF16AndSkipsTablePreview(t *testing.T) {
+	document := &docs.Document{
+		DocumentId: "test-doc-id",
+		Body: &docs.Body{Content: []*docs.StructuralElement{
+			{
+				StartIndex: 1,
+				EndIndex:   8,
+				Paragraph: &docs.Paragraph{Elements: []*docs.ParagraphElement{{
+					StartIndex: 1,
+					EndIndex:   8,
+					TextRun:    &docs.TextRun{Content: "😀 foo\n"},
+				}}},
+			},
+			{
+				StartIndex: 8,
+				EndIndex:   20,
+				Table: &docs.Table{TableRows: []*docs.TableRow{{
+					TableCells: []*docs.TableCell{{
+						Content: []*docs.StructuralElement{{
+							StartIndex: 9,
+							EndIndex:   13,
+							Paragraph: &docs.Paragraph{Elements: []*docs.ParagraphElement{{
+								StartIndex: 9,
+								EndIndex:   13,
+								TextRun:    &docs.TextRun{Content: "foo\n"},
+							}}},
+						}},
+					}},
+				}}},
+			},
+		}},
+	}
+
+	var captured []*docs.Request
+	server := mockDocsServerAdvanced(t, document, func(requests []*docs.Request) {
+		captured = append(captured, requests...)
+	})
+	defer server.Close()
+	service, err := docs.NewService(
+		context.Background(),
+		option.WithoutAuthentication(),
+		option.WithHTTPClient(server.Client()),
+		option.WithEndpoint(server.URL+"/"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := mockDocsContext(t, service)
+	command := &DocsSedCmd{}
+
+	err = command.runAddressedSubstitute(ctx, sedTestUI(), "", document.DocumentId, "", sedExpr{
+		pattern:     "foo",
+		replacement: "bar",
+		addr:        &sedAddress{Start: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 2 {
+		t.Fatalf("requests = %#v, want delete and insert", captured)
+	}
+	deletion := captured[0].DeleteContentRange
+	insertion := captured[1].InsertText
+	if deletion == nil || deletion.Range.StartIndex != 4 || deletion.Range.EndIndex != 7 {
+		t.Fatalf("delete = %#v, want UTF-16 range 4:7", deletion)
+	}
+	if insertion == nil || insertion.Location.Index != 4 || insertion.Text != "bar" {
+		t.Fatalf("insert = %#v, want bar at 4", insertion)
+	}
+
+	captured = nil
+	err = command.runAddressedSubstitute(ctx, sedTestUI(), "", document.DocumentId, "", sedExpr{
+		pattern:     "foo",
+		replacement: "bar",
+		addr:        &sedAddress{Start: 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 0 {
+		t.Fatalf("table preview generated requests: %#v", captured)
+	}
+}
+
 // buildDoc constructs a realistic multi-paragraph Google Doc for testing.
 func buildDoc(paragraphs ...testDocParagraph) *docs.Document {
 	content := make([]*docs.StructuralElement, 0, len(paragraphs))

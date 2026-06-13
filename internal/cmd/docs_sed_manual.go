@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"google.golang.org/api/docs/v1"
@@ -43,96 +42,37 @@ type sedMatch struct {
 	oldText    string
 	newText    string
 	formats    []string
-	image      *ImageSpec
+	image      *docssed.ImageSpec
 	braceExpr  *braceExpr   // SEDMAT v3.5 brace expression
 	braceSpans []*braceSpan // Inline scoping spans
 }
 
-// findDocMatches walks the document content, finds all regex matches, and returns them.
-// It also handles nth-match filtering and global vs single-match logic.
-func findDocMatches(doc *docs.Document, re *regexp.Regexp, expr sedExpr) []sedMatch {
-	var matches []sedMatch
+func findDocMatches(doc *docs.Document, planner *docssed.MatchPlanner) []sedMatch {
 	projection := docssed.ProjectDocument(doc)
 	if projection.Legacy == nil {
 		return nil
 	}
-	for _, run := range projection.Legacy.TextRuns {
-		if run.Text == "" {
-			continue
-		}
-		limit := -1
-		if !expr.global && expr.nthMatch <= 0 {
-			limit = 1
-		}
-		results := re.FindAllStringSubmatchIndex(run.Text, limit)
-		for _, location := range results {
-			oldText := run.Text[location[0]:location[1]]
-			expanded := re.ReplaceAllString(oldText, expr.replacement)
-			matches = append(matches, classifyMatch(
-				run.StartIndex,
-				run.Text,
-				location,
-				oldText,
-				expanded,
-				expr,
-			))
-		}
-	}
+	actions := planner.PlanSegment(*projection.Legacy)
 
-	// If nth-match is set, keep only the Nth occurrence across the whole document
-	if expr.nthMatch > 0 {
-		if len(matches) >= expr.nthMatch {
-			return matches[expr.nthMatch-1 : expr.nthMatch]
+	matches := make([]sedMatch, 0, len(actions))
+	for _, action := range actions {
+		replacement := action.Replacement
+		formats := replacement.Formats
+		if replacement.Brace != nil {
+			formats = append(formats, braceExprToFormats(replacement.Brace)...)
 		}
-		return nil
+		matches = append(matches, sedMatch{
+			start:      action.StartIndex,
+			end:        action.EndIndex,
+			oldText:    action.OldText,
+			newText:    replacement.Text,
+			formats:    formats,
+			image:      replacement.Image,
+			braceExpr:  replacement.Brace,
+			braceSpans: replacement.BraceSpans,
+		})
 	}
-
 	return matches
-}
-
-// classifyMatch creates a sedMatch from a regex match, determining if it's an image,
-// brace expression, or plain text replacement.
-func classifyMatch(baseIdx int64, text string, loc []int, oldText, expanded string, expr sedExpr) sedMatch {
-	start, end := matchDocsRange(baseIdx, text, loc)
-
-	// Fast path: only attempt image parsing if replacement starts with ![
-	var imgSpec *ImageSpec
-	if strings.HasPrefix(expanded, "![") {
-		imgSpec = parseImageSyntax(expanded)
-	}
-	switch {
-	case imgSpec != nil:
-		return sedMatch{start: start, end: end, oldText: oldText, image: imgSpec}
-	case expr.brace != nil && expr.brace.ImgRef != "":
-		// Brace image: {img=url x=W y=H}
-		spec := &ImageSpec{URL: expr.brace.ImgRef}
-		if expr.brace.Width > 0 {
-			spec.Width = expr.brace.Width
-		}
-		if expr.brace.Height > 0 {
-			spec.Height = expr.brace.Height
-		}
-		return sedMatch{start: start, end: end, oldText: oldText, image: spec}
-	case expr.brace != nil:
-		return sedMatch{
-			start:      start,
-			end:        end,
-			oldText:    oldText,
-			newText:    expanded,
-			formats:    braceExprToFormats(expr.brace),
-			braceExpr:  expr.brace,
-			braceSpans: expr.braceSpans,
-		}
-	default:
-		plainText, formats := parseMarkdownReplacement(expanded)
-		return sedMatch{start: start, end: end, oldText: oldText, newText: plainText, formats: formats}
-	}
-}
-
-func matchDocsRange(baseIdx int64, text string, loc []int) (int64, int64) {
-	start := baseIdx + utf16Len(text[:loc[0]])
-	end := start + utf16Len(text[loc[0]:loc[1]])
-	return start, end
 }
 
 // processFootnotes handles footnote matches, each needing a two-phase create+populate approach.
@@ -186,9 +126,9 @@ type formatRange struct {
 }
 
 func (c *DocsSedCmd) runManualInner(ctx context.Context, docsSvc *docs.Service, id string, expr sedExpr) (int, []*docs.Request, error) {
-	re, err := expr.compilePattern()
+	planner, err := docssed.NewMatchPlanner(semanticExpressionFromSedExpr(expr))
 	if err != nil {
-		return 0, nil, fmt.Errorf("compile pattern: %w", err)
+		return 0, nil, err
 	}
 
 	doc, err := getDoc(ctx, docsSvc, id)
@@ -196,7 +136,7 @@ func (c *DocsSedCmd) runManualInner(ctx context.Context, docsSvc *docs.Service, 
 		return 0, nil, fmt.Errorf("get document: %w", err)
 	}
 
-	matches := findDocMatches(doc, re, expr)
+	matches := findDocMatches(doc, planner)
 	if len(matches) == 0 {
 		return 0, nil, nil
 	}

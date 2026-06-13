@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"context"
-	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/docs/v1"
+
+	"github.com/steipete/gogcli/internal/docssed"
 )
 
 // =============================================================================
@@ -194,6 +195,18 @@ func TestRunManualInner_SimpleReplace(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+func TestRunManualInnerInvalidPatternFailsBeforeFetch(t *testing.T) {
+	cmd := &DocsSedCmd{}
+	_, _, err := cmd.runManualInner(
+		context.Background(),
+		nil,
+		"test-doc",
+		sedExpr{pattern: "[", replacement: "x"},
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compile pattern")
+}
+
 func TestFindDocMatches_UTF16Offsets(t *testing.T) {
 	doc := &docs.Document{
 		DocumentId: "test-doc",
@@ -206,7 +219,9 @@ func TestFindDocMatches_UTF16Offsets(t *testing.T) {
 		}},
 	}
 
-	matches := findDocMatches(doc, regexp.MustCompile("foo"), sedExpr{pattern: "foo", replacement: "${0}"})
+	planner, err := docssed.NewMatchPlanner(docssed.Expression{Pattern: "foo", Replacement: "${0}"})
+	require.NoError(t, err)
+	matches := findDocMatches(doc, planner)
 	require.Len(t, matches, 1)
 	assert.Equal(t, int64(5), matches[0].start)
 	assert.Equal(t, int64(8), matches[0].end)
@@ -874,20 +889,18 @@ func TestFindDocMatches_AcrossElements(t *testing.T) {
 		para(plain("Hello again")),
 	)
 	expr := sedExpr{pattern: "Hello", replacement: "Hi", global: true}
-	re, err := expr.compilePattern()
+	planner, err := docssed.NewMatchPlanner(semanticExpressionFromSedExpr(expr))
 	require.NoError(t, err)
-
-	matches := findDocMatches(doc, re, expr)
+	matches := findDocMatches(doc, planner)
 	assert.Equal(t, 2, len(matches))
 }
 
 func TestFindDocMatches_InTable(t *testing.T) {
 	doc := buildDocWithTable("", 2, 2, [][]string{{"hello", "world"}, {"foo", "bar"}}, "")
 	expr := sedExpr{pattern: "hello", replacement: "HI", global: true}
-	re, err := expr.compilePattern()
+	planner, err := docssed.NewMatchPlanner(semanticExpressionFromSedExpr(expr))
 	require.NoError(t, err)
-
-	matches := findDocMatches(doc, re, expr)
+	matches := findDocMatches(doc, planner)
 	assert.Equal(t, 1, len(matches))
 }
 

@@ -108,3 +108,16 @@ func sedExprFromCore(expression docssed.Expression) sedExpr {
 		addr:        expression.Address,
 	}
 }
+
+func semanticExpressionFromSedExpr(expression sedExpr) docssed.Expression {
+	return docssed.Expression{
+		Pattern:     expression.pattern,
+		Replacement: expression.replacement,
+		Global:      expression.global,
+		NthMatch:    expression.nthMatch,
+		Command:     docssed.Command(expression.command),
+		Address:     expression.addr,
+		Brace:       expression.brace,
+		BraceSpans:  expression.braceSpans,
+	}
+}
