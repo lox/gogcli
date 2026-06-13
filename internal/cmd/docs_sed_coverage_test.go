@@ -784,39 +784,6 @@ func TestClassifyExprForBatch(t *testing.T) {
 	}
 }
 
-func TestExtractParagraphText_FastPath(t *testing.T) {
-	// Single text run — fast path
-	p := &docs.Paragraph{
-		Elements: []*docs.ParagraphElement{
-			{TextRun: &docs.TextRun{Content: "hello world\n"}},
-		},
-	}
-	assert.Equal(t, "hello world", extractParagraphText(p))
-
-	// Multiple text runs — builder path
-	p2 := &docs.Paragraph{
-		Elements: []*docs.ParagraphElement{
-			{TextRun: &docs.TextRun{Content: "hello "}},
-			{TextRun: &docs.TextRun{Content: "world\n"}},
-		},
-	}
-	assert.Equal(t, "hello world", extractParagraphText(p2))
-
-	// Non-text element mixed in
-	p3 := &docs.Paragraph{
-		Elements: []*docs.ParagraphElement{
-			{TextRun: &docs.TextRun{Content: "hello "}},
-			{}, // non-text element
-			{TextRun: &docs.TextRun{Content: "world"}},
-		},
-	}
-	assert.Equal(t, "hello world", extractParagraphText(p3))
-
-	// Empty paragraph
-	p4 := &docs.Paragraph{Elements: []*docs.ParagraphElement{}}
-	assert.Equal(t, "", extractParagraphText(p4))
-}
-
 func TestLiteralReplacement_Extended(t *testing.T) {
 	assert.Equal(t, "$", literalReplacement("$$"))
 	assert.Equal(t, "hello$world", literalReplacement("hello$$world"))

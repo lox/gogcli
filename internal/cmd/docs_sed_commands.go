@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"google.golang.org/api/docs/v1"
 
@@ -27,50 +26,26 @@ func fetchDoc(ctx context.Context, account, id string) (*docs.Service, *docs.Doc
 
 // runDeleteCommand executes a d/pattern/ command, deleting all lines containing the pattern.
 func (c *DocsSedCmd) runDeleteCommand(ctx context.Context, u *ui.UI, account, id string, expr sedExpr) error {
+	planner, err := docssed.NewParagraphPlanner(semanticExpressionFromSedExpr(expr))
+	if err != nil {
+		return err
+	}
+
 	docsSvc, doc, err := fetchDoc(ctx, account, id)
 	if err != nil {
 		return err
 	}
 
-	re, err := expr.compilePattern()
-	if err != nil {
-		return fmt.Errorf("compile pattern: %w", err)
-	}
-
-	// Find paragraphs matching the pattern and collect their ranges for deletion
-	var requests []*docs.Request
-	deleted := 0
-
-	// Walk in reverse so deletions don't shift indices
 	if doc.Body == nil {
 		return sedOutputOK(ctx, u, id, sedOutputKV{Key: "deleted", Value: "0 (empty document)"})
 	}
-	elems := doc.Body.Content
-	for i := len(elems) - 1; i >= 0; i-- {
-		elem := elems[i]
-		if elem.Paragraph == nil {
-			continue
-		}
-		text := extractParagraphText(elem.Paragraph)
-		if re.MatchString(text) {
-			start := elem.StartIndex
-			end := elem.EndIndex
-			// Don't delete before the document body start
-			if start < 1 {
-				start = 1
-			}
-			requests = append(requests, &docs.Request{
-				DeleteContentRange: &docs.DeleteContentRangeRequest{
-					Range: &docs.Range{
-						StartIndex: start,
-						EndIndex:   end,
-						SegmentId:  "",
-					},
-				},
-			})
-			deleted++
-		}
+
+	projection := docssed.ProjectDocument(doc)
+	if projection.Legacy == nil {
+		return sedOutputOK(ctx, u, id, sedOutputKV{Key: "deleted", Value: "0 (no matches)"})
 	}
+	mutations := planner.PlanDelete(*projection.Legacy)
+	requests := buildAddressMutationRequests(mutations, "")
 
 	if len(requests) == 0 {
 		return sedOutputOK(ctx, u, id, sedOutputKV{Key: "deleted", Value: "0 (no matches)"})
@@ -80,7 +55,7 @@ func (c *DocsSedCmd) runDeleteCommand(ctx context.Context, u *ui.UI, account, id
 		return fmt.Errorf("batch update (delete): %w", err)
 	}
 
-	return sedOutputOK(ctx, u, id, sedOutputKV{Key: "deleted", Value: fmt.Sprintf("%d lines", deleted)})
+	return sedOutputOK(ctx, u, id, sedOutputKV{Key: "deleted", Value: fmt.Sprintf("%d lines", len(mutations))})
 }
 
 // runAppendCommand executes an a/pattern/text/ command, inserting text after each matching line.
@@ -95,6 +70,11 @@ func (c *DocsSedCmd) runInsertCommand(ctx context.Context, u *ui.UI, account, id
 
 // runInsertAroundMatch implements both append-after and insert-before matching lines.
 func (c *DocsSedCmd) runInsertAroundMatch(ctx context.Context, u *ui.UI, account, id string, expr sedExpr, before bool) error {
+	planner, err := docssed.NewParagraphPlanner(semanticExpressionFromSedExpr(expr))
+	if err != nil {
+		return err
+	}
+
 	docsSvc, doc, err := fetchDoc(ctx, account, id)
 	if err != nil {
 		return err
@@ -104,56 +84,26 @@ func (c *DocsSedCmd) runInsertAroundMatch(ctx context.Context, u *ui.UI, account
 		resultKey = "inserted"
 	}
 
-	re, err := expr.compilePattern()
-	if err != nil {
-		return fmt.Errorf("compile pattern: %w", err)
-	}
-
-	// Process replacement text: convert \n to real newlines
-	insertText := strings.ReplaceAll(expr.replacement, "\\n", "\n")
-	if !strings.HasSuffix(insertText, "\n") {
-		insertText += "\n"
-	}
-
-	// Collect insertion points (in reverse order to preserve indices)
-	var insertPoints []int64
 	if doc.Body == nil {
 		return sedOutputOK(ctx, u, id, sedOutputKV{Key: resultKey, Value: "0 (empty document)"})
 	}
-	for _, elem := range doc.Body.Content {
-		if elem.Paragraph == nil {
-			continue
-		}
-		text := extractParagraphText(elem.Paragraph)
-		if re.MatchString(text) {
-			if before {
-				insertPoints = append(insertPoints, elem.StartIndex)
-			} else {
-				insertPoints = append(insertPoints, elem.EndIndex)
-			}
-		}
-	}
 
-	if len(insertPoints) == 0 {
+	projection := docssed.ProjectDocument(doc)
+	if projection.Legacy == nil {
 		return sedOutputOK(ctx, u, id, sedOutputKV{Key: resultKey, Value: "0 (no matches)"})
 	}
+	mutations := planner.PlanInsert(*projection.Legacy, expr.replacement, before)
+	requests := buildAddressMutationRequests(mutations, "")
 
-	// Build requests in reverse document order
-	var requests []*docs.Request
-	for i := len(insertPoints) - 1; i >= 0; i-- {
-		requests = append(requests, &docs.Request{
-			InsertText: &docs.InsertTextRequest{
-				Location: &docs.Location{Index: insertPoints[i]},
-				Text:     insertText,
-			},
-		})
+	if len(requests) == 0 {
+		return sedOutputOK(ctx, u, id, sedOutputKV{Key: resultKey, Value: "0 (no matches)"})
 	}
 
 	if _, err := batchUpdate(ctx, docsSvc, id, requests); err != nil {
 		return fmt.Errorf("batch update (insert): %w", err)
 	}
 
-	return sedOutputOK(ctx, u, id, sedOutputKV{Key: resultKey, Value: fmt.Sprintf("%d lines", len(insertPoints))})
+	return sedOutputOK(ctx, u, id, sedOutputKV{Key: resultKey, Value: fmt.Sprintf("%d lines", len(mutations))})
 }
 
 // runTransliterate executes a y/source/dest/ command, replacing each character in source
@@ -197,21 +147,6 @@ func (c *DocsSedCmd) runTransliterate(ctx context.Context, u *ui.UI, account, id
 	return sedOutputOK(ctx, u, id,
 		sedOutputKV{Key: "transliterated", Value: fmt.Sprintf("%d chars across %d pairs", replaced, len(sourceRunes))},
 	)
-}
-
-// extractParagraphText returns the plain text content of a paragraph.
-func extractParagraphText(p *docs.Paragraph) string {
-	// Fast path: single text run (most common case) avoids Builder allocation.
-	if len(p.Elements) == 1 && p.Elements[0].TextRun != nil {
-		return strings.TrimRight(p.Elements[0].TextRun.Content, "\n")
-	}
-	var sb strings.Builder
-	for _, elem := range p.Elements {
-		if elem.TextRun != nil {
-			sb.WriteString(elem.TextRun.Content)
-		}
-	}
-	return strings.TrimRight(sb.String(), "\n")
 }
 
 // --- Addressed command implementations ---

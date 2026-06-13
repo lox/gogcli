@@ -391,6 +391,96 @@ func TestFillTableCellsUsesSharedMarkdownPlan(t *testing.T) {
 	}
 }
 
+func TestRunParagraphCommandsUseTopLevelReversePlans(t *testing.T) {
+	document := &docs.Document{
+		DocumentId: "test-doc-id",
+		Body: &docs.Body{Content: []*docs.StructuralElement{
+			indexedParagraph(1, 7, "match\n"),
+			{
+				StartIndex: 7,
+				EndIndex:   20,
+				Table: &docs.Table{TableRows: []*docs.TableRow{{
+					TableCells: []*docs.TableCell{{
+						Content: []*docs.StructuralElement{
+							indexedParagraph(8, 14, "match\n"),
+						},
+					}},
+				}}},
+			},
+			indexedParagraph(20, 26, "match\n"),
+		}},
+	}
+	var captured []*docs.Request
+	server := mockDocsServerAdvanced(t, document, func(requests []*docs.Request) {
+		captured = append(captured, requests...)
+	})
+	defer server.Close()
+	service, err := docs.NewService(
+		context.Background(),
+		option.WithoutAuthentication(),
+		option.WithHTTPClient(server.Client()),
+		option.WithEndpoint(server.URL+"/"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := mockDocsContext(t, service)
+	command := &DocsSedCmd{}
+
+	err = command.runDeleteCommand(ctx, sedTestUI(), "", document.DocumentId, sedExpr{pattern: "match"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 2 ||
+		captured[0].DeleteContentRange.Range.StartIndex != 20 ||
+		captured[1].DeleteContentRange.Range.StartIndex != 1 {
+		t.Fatalf("delete requests = %#v", captured)
+	}
+
+	captured = nil
+	err = command.runInsertCommand(ctx, sedTestUI(), "", document.DocumentId, sedExpr{
+		pattern:     "match",
+		replacement: `one\ntwo`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 2 ||
+		captured[0].InsertText.Location.Index != 20 ||
+		captured[1].InsertText.Location.Index != 1 ||
+		captured[0].InsertText.Text != "one\ntwo\n" {
+		t.Fatalf("insert requests = %#v", captured)
+	}
+
+	captured = nil
+	err = command.runAppendCommand(ctx, sedTestUI(), "", document.DocumentId, sedExpr{
+		pattern:     "match",
+		replacement: "after",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 2 ||
+		captured[0].InsertText.Location.Index != 26 ||
+		captured[1].InsertText.Location.Index != 7 ||
+		captured[0].InsertText.Text != "after\n" {
+		t.Fatalf("append requests = %#v", captured)
+	}
+}
+
+func TestRunParagraphCommandRejectsPatternBeforeFetch(t *testing.T) {
+	err := (&DocsSedCmd{}).runDeleteCommand(
+		context.Background(),
+		sedTestUI(),
+		"",
+		"test-doc-id",
+		sedExpr{pattern: "["},
+	)
+	if err == nil || !strings.Contains(err.Error(), "compile pattern") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func tableCellDocument(cells []*docs.TableCell) *docs.Document {
 	return &docs.Document{
 		DocumentId: "test-doc-id",
@@ -400,6 +490,18 @@ func tableCellDocument(cells []*docs.TableCell) *docs.Document {
 			Table: &docs.Table{TableRows: []*docs.TableRow{{
 				TableCells: cells,
 			}}},
+		}}},
+	}
+}
+
+func indexedParagraph(start, end int64, text string) *docs.StructuralElement {
+	return &docs.StructuralElement{
+		StartIndex: start,
+		EndIndex:   end,
+		Paragraph: &docs.Paragraph{Elements: []*docs.ParagraphElement{{
+			StartIndex: start,
+			EndIndex:   end,
+			TextRun:    &docs.TextRun{Content: text},
 		}}},
 	}
 }

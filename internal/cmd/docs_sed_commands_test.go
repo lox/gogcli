@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/api/docs/v1"
 
 	"github.com/steipete/gogcli/internal/docssed"
 )
@@ -191,29 +190,6 @@ func TestParseFullExpr_CommandAmbiguity(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestExtractParagraphText(t *testing.T) {
-	// nil elements
-	p := &docs.Paragraph{}
-	assert.Equal(t, "", extractParagraphText(p))
-
-	// single text run
-	p = &docs.Paragraph{
-		Elements: []*docs.ParagraphElement{
-			{TextRun: &docs.TextRun{Content: "Hello World\n"}},
-		},
-	}
-	assert.Equal(t, "Hello World", extractParagraphText(p))
-
-	// multiple text runs
-	p = &docs.Paragraph{
-		Elements: []*docs.ParagraphElement{
-			{TextRun: &docs.TextRun{Content: "Hello "}},
-			{TextRun: &docs.TextRun{Content: "World\n"}},
-		},
-	}
-	assert.Equal(t, "Hello World", extractParagraphText(p))
 }
 
 func TestEscapeUnescapeMarkdown(t *testing.T) {

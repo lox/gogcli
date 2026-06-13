@@ -21,6 +21,7 @@
 - Docs: avoid overlapping deletes when a `docs sed` addressed range includes the final paragraph.
 - Docs: make `docs sed` table-cell substitutions use UTF-16 indices, honor nth-match flags, expand captures independently per wildcard cell, refetch before repeated same-cell expressions, and report the exact replacement count.
 - Docs: make `docs sed` table-creation placeholders use UTF-16 indices and share cell-fill Markdown range planning with table-cell replacement.
+- Docs: validate unaddressed `docs sed` delete/insert/append regexes before fetching and keep their top-level paragraph selection and reverse mutation ordering consistent with addressed commands.
 - Auth: clarify that `auth import` always requires a refresh-token source and only optionally accepts a current access token plus expiry.
 - Calendar: make alias set/unset dry-runs preview config changes without writing `config.json`.
 - Dry-run safety: keep Drive, Contacts, Slides thumbnail, backup plaintext, OAuth token, Gmail filter, Photos, and Photos Picker downloads/exports offline and prevent local file or secret output.
