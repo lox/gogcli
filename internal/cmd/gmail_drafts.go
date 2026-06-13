@@ -83,15 +83,13 @@ func (c *GmailDraftsListCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "ID\tMESSAGE_ID")
-	for _, d := range drafts {
-		msgID := ""
-		if d.Message != nil {
-			msgID = d.Message.Id
-		}
-		fmt.Fprintf(w, "%s\t%s\n", d.Id, msgID)
+	if err := outfmt.WriteTable(
+		ctx,
+		stdoutWriter(ctx),
+		compactGmailRows(drafts),
+		gmailDraftColumns(),
+	); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 	return nil

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"google.golang.org/api/gmail/v1"
 
@@ -34,13 +33,7 @@ func writeGmailEmailStatusList(ctx context.Context, jsonKey string, raw any, emp
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "EMAIL\tSTATUS")
-	for _, row := range rows {
-		fmt.Fprintf(w, "%s\t%s\n", sanitizeTab(row.Email), sanitizeTab(row.Status))
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), rows, gmailEmailStatusColumns())
 }
 
 func writeGmailEmailStatusItem(ctx context.Context, jsonKey string, raw any, emailKey string, row gmailEmailStatusRow) error {

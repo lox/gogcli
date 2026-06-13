@@ -103,16 +103,8 @@ func (c *GmailSearchCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-
-	fmt.Fprintln(w, "ID\tDATE\tFROM\tSUBJECT\tLABELS\tTHREAD")
-	for _, it := range items {
-		threadInfo := "-"
-		if it.MessageCount > 1 {
-			threadInfo = fmt.Sprintf("[%d msgs]", it.MessageCount)
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.Date, it.From, it.Subject, strings.Join(it.Labels, ","), threadInfo)
+	if err := outfmt.WriteTable(ctx, stdoutWriter(ctx), items, gmailThreadColumns()); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 	return nil

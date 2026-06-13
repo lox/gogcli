@@ -308,13 +308,7 @@ func (c *GmailLabelsListCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return nil
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-	fmt.Fprintln(w, "ID\tNAME\tTYPE")
-	for _, l := range resp.Labels {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", l.Id, l.Name, l.Type)
-	}
-	return nil
+	return outfmt.WriteTable(ctx, stdoutWriter(ctx), compactGmailRows(resp.Labels), gmailLabelColumns())
 }
 
 type GmailLabelsModifyCmd struct {

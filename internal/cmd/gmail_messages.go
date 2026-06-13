@@ -113,24 +113,13 @@ func (c *GmailMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) erro
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	w, flush := tableWriter(ctx)
-	defer flush()
-
-	if c.IncludeBody {
-		fmt.Fprintln(w, "ID\tTHREAD\tDATE\tFROM\tSUBJECT\tLABELS\tBODY")
-	} else {
-		fmt.Fprintln(w, "ID\tTHREAD\tDATE\tFROM\tSUBJECT\tLABELS")
-	}
-	for _, it := range items {
-		body := ""
-		if c.IncludeBody {
-			body = sanitizeMessageBody(it.Body, c.Full)
-		}
-		if c.IncludeBody {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.ThreadID, it.Date, it.From, it.Subject, strings.Join(it.Labels, ","), body)
-		} else {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.ThreadID, it.Date, it.From, it.Subject, strings.Join(it.Labels, ","))
-		}
+	if err := outfmt.WriteTable(
+		ctx,
+		stdoutWriter(ctx),
+		items,
+		gmailMessageColumns(c.IncludeBody, c.Full),
+	); err != nil {
+		return err
 	}
 	printNextPageHint(u, nextPageToken)
 	return nil
