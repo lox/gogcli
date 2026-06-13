@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/steipete/gogcli/internal/app"
+	"github.com/steipete/gogcli/internal/authclient"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/secrets"
 )
@@ -80,6 +81,39 @@ func TestAuthTokensExportImport_JSON(t *testing.T) {
 	}
 	if imported.RefreshToken != "rt" {
 		t.Fatalf("unexpected imported token: %#v", imported)
+	}
+}
+
+func TestAuthTokensExportUsesNoMigrateGetter(t *testing.T) {
+	store := &noMigrateExportStore{memStore: newMemStore()}
+	if err := store.SetToken(config.DefaultClientName, "a@b.com", secrets.Token{
+		Email:        "a@b.com",
+		RefreshToken: "rt",
+	}); err != nil {
+		t.Fatalf("SetToken: %v", err)
+	}
+
+	outPath := filepath.Join(t.TempDir(), "token.json")
+	ctx := authclient.WithClient(
+		withAuthStore(newCmdJSONOutputContext(t, os.Stdout, os.Stderr), store),
+		config.DefaultClientName,
+	)
+
+	err := (&AuthTokensExportCmd{
+		Email:     "a@b.com",
+		Output:    OutputPathRequiredFlag{Path: outPath},
+		Overwrite: true,
+	}).Run(ctx, &RootFlags{})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	if store.noMigrateCalls != 1 {
+		t.Fatalf("expected one GetTokenNoMigrate call, got %d", store.noMigrateCalls)
+	}
+
+	if store.getTokenCalls != 0 {
+		t.Fatalf("expected export to skip GetToken, got %d calls", store.getTokenCalls)
 	}
 }
 
@@ -256,4 +290,22 @@ func (m *memStore) GetDefaultAccount(client string) (string, error) {
 func (m *memStore) SetDefaultAccount(client string, email string) error {
 	m.defaultEmail = email
 	return nil
+}
+
+type noMigrateExportStore struct {
+	*memStore
+	noMigrateCalls int
+	getTokenCalls  int
+}
+
+func (m *noMigrateExportStore) GetToken(client string, email string) (secrets.Token, error) {
+	m.getTokenCalls++
+
+	return m.memStore.GetToken(client, email)
+}
+
+func (m *noMigrateExportStore) GetTokenNoMigrate(client string, email string) (secrets.Token, error) {
+	m.noMigrateCalls++
+
+	return m.memStore.GetToken(client, email)
 }

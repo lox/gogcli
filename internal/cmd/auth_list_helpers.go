@@ -47,6 +47,9 @@ func listAuthTokensWithFallback(store secrets.Store) ([]secrets.Token, []authTok
 	if err == nil {
 		return tokens, nil, nil
 	}
+	if secrets.IsKeyringTimeout(err) {
+		return nil, nil, err
+	}
 
 	return readableTokens(store)
 }

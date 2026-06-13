@@ -119,6 +119,10 @@ type AuthTokensExportCmd struct {
 	Overwrite bool                   `name:"overwrite" help:"Overwrite output file if it exists"`
 }
 
+type tokenNoMigrateGetter interface {
+	GetTokenNoMigrate(client string, email string) (secrets.Token, error)
+}
+
 func (c *AuthTokensExportCmd) Run(ctx context.Context, _ *RootFlags) error {
 	u := ui.FromContext(ctx)
 	email := strings.TrimSpace(c.Email)
@@ -138,7 +142,7 @@ func (c *AuthTokensExportCmd) Run(ctx context.Context, _ *RootFlags) error {
 	if err != nil {
 		return err
 	}
-	tok, err := store.GetToken(client, email)
+	tok, err := getTokenForExport(store, client, email)
 	if err != nil {
 		return err
 	}
@@ -204,6 +208,14 @@ func (c *AuthTokensExportCmd) Run(ctx context.Context, _ *RootFlags) error {
 	u.Out().Linef("client\t%s", client)
 	u.Out().Linef("path\t%s", outPath)
 	return nil
+}
+
+func getTokenForExport(store secrets.Store, client string, email string) (secrets.Token, error) {
+	if noMigrate, ok := store.(tokenNoMigrateGetter); ok {
+		return noMigrate.GetTokenNoMigrate(client, email)
+	}
+
+	return store.GetToken(client, email)
 }
 
 type AuthTokensImportCmd struct {

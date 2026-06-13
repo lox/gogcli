@@ -128,7 +128,28 @@ func (s *KeyringStore) GetToken(client string, email string) (Token, error) {
 	return tok, nil
 }
 
+// GetTokenNoMigrate reads a token without repairing legacy default-client keys.
+func (s *KeyringStore) GetTokenNoMigrate(client string, email string) (Token, error) {
+	var tok Token
+
+	err := s.withReadLock(func() error {
+		var getErr error
+		tok, getErr = s.getTokenNoLockOptions(client, email, false)
+
+		return getErr
+	})
+	if err != nil {
+		return Token{}, err
+	}
+
+	return tok, nil
+}
+
 func (s *KeyringStore) getTokenNoLock(client string, email string) (Token, error) {
+	return s.getTokenNoLockOptions(client, email, true)
+}
+
+func (s *KeyringStore) getTokenNoLockOptions(client string, email string, migrateLegacy bool) (Token, error) {
 	email = normalize(email)
 	if email == "" {
 		return Token{}, errMissingEmail
@@ -139,19 +160,28 @@ func (s *KeyringStore) getTokenNoLock(client string, email string) (Token, error
 		return Token{}, err
 	}
 
-	item, err := s.ring.Get(tokenKey(normalizedClient, email))
+	primaryKey := tokenKey(normalizedClient, email)
+
+	item, err := s.ring.Get(primaryKey)
 	if err != nil {
-		if normalizedClient == config.DefaultClientName {
-			if legacyItem, legacyErr := s.ring.Get(legacyTokenKey(email)); legacyErr == nil {
-				item = legacyItem
-				if migrateErr := verifiedSet(s.ring, tokenKey(normalizedClient, email), legacyItem.Data, "migrated token"); migrateErr != nil {
-					return Token{}, wrapKeychainError(fmt.Errorf("migrate token: %w", migrateErr))
-				}
-			} else {
-				return Token{}, fmt.Errorf("read token: %w", err)
-			}
-		} else {
+		if normalizedClient != config.DefaultClientName || !errors.Is(err, keyring.ErrKeyNotFound) {
 			return Token{}, fmt.Errorf("read token: %w", err)
+		}
+
+		legacyItem, legacyErr := s.ring.Get(legacyTokenKey(email))
+		if legacyErr != nil {
+			if !errors.Is(legacyErr, keyring.ErrKeyNotFound) {
+				return Token{}, fmt.Errorf("read legacy token: %w", legacyErr)
+			}
+
+			return Token{}, fmt.Errorf("read token: %w", err)
+		}
+
+		item = legacyItem
+		if migrateLegacy {
+			if migrateErr := verifiedSet(s.ring, primaryKey, legacyItem.Data, "migrated token"); migrateErr != nil {
+				return Token{}, wrapKeychainError(fmt.Errorf("migrate token: %w", migrateErr))
+			}
 		}
 	}
 

@@ -18,6 +18,7 @@ import (
 var (
 	errTestDuplicateKeychain = errors.New("failed to update item in keychain: the specified item already exists in the keychain. (-25299)")
 	errTestKeychain          = errors.New("test -25308 error")
+	errTestLegacyRead        = errors.New("legacy keychain denied access")
 	errTestReadBack          = errors.New("test read-back failure")
 )
 
@@ -557,6 +558,81 @@ func TestGetTokenMigrationSetsLabel(t *testing.T) {
 
 	if it.Label != config.AppName {
 		t.Fatalf("expected migrated label %q, got %q", config.AppName, it.Label)
+	}
+}
+
+func TestGetTokenNoMigrateReadsLegacyWithoutWritingPrimary(t *testing.T) {
+	ring := keyring.NewArrayKeyring(nil)
+	store := &KeyringStore{ring: ring}
+	email := "a@b.com"
+	client := config.DefaultClientName
+
+	payload, err := json.Marshal(storedToken{
+		Email:        email,
+		RefreshToken: "rt",
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	if setErr := ring.Set(keyring.Item{Key: legacyTokenKey(email), Data: payload}); setErr != nil {
+		t.Fatalf("Set legacy token: %v", setErr)
+	}
+
+	got, err := store.GetTokenNoMigrate(client, email)
+	if err != nil {
+		t.Fatalf("GetTokenNoMigrate: %v", err)
+	}
+
+	if got.Email != email || got.RefreshToken != "rt" {
+		t.Fatalf("unexpected token: %#v", got)
+	}
+
+	if _, err := ring.Get(tokenKey(client, email)); !errors.Is(err, keyring.ErrKeyNotFound) {
+		t.Fatalf("expected primary token to remain missing, got %v", err)
+	}
+
+	if _, err := ring.Get(legacyTokenKey(email)); err != nil {
+		t.Fatalf("expected legacy token to remain readable, got %v", err)
+	}
+}
+
+type legacyTokenReadErrorKeyring struct {
+	*keyring.ArrayKeyring
+	legacyKey string
+	err       error
+}
+
+func (l *legacyTokenReadErrorKeyring) Get(key string) (keyring.Item, error) {
+	if key == l.legacyKey {
+		return keyring.Item{}, l.err
+	}
+
+	item, err := l.ArrayKeyring.Get(key)
+	if err != nil {
+		return keyring.Item{}, fmt.Errorf("array get: %w", err)
+	}
+
+	return item, nil
+}
+
+func TestGetTokenReportsLegacyReadError(t *testing.T) {
+	email := "a@b.com"
+	ring := &legacyTokenReadErrorKeyring{
+		ArrayKeyring: keyring.NewArrayKeyring(nil),
+		legacyKey:    legacyTokenKey(email),
+		err:          errTestLegacyRead,
+	}
+	store := &KeyringStore{ring: ring}
+
+	_, err := store.GetToken(config.DefaultClientName, email)
+	if !errors.Is(err, errTestLegacyRead) {
+		t.Fatalf("expected legacy read error, got %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "read legacy token") {
+		t.Fatalf("expected legacy read context, got %v", err)
 	}
 }
 

@@ -302,11 +302,16 @@ func TestAuthStatus_Text_ConfigFile(t *testing.T) {
 }
 
 type errorTokenStore struct {
-	keys []string
-	err  error
+	keys      []string
+	err       error
+	keysCalls int
 }
 
-func (s *errorTokenStore) Keys() ([]string, error) { return s.keys, nil }
+func (s *errorTokenStore) Keys() ([]string, error) {
+	s.keysCalls++
+
+	return s.keys, nil
+}
 
 func (s *errorTokenStore) SetToken(string, string, secrets.Token) error { return nil }
 
@@ -321,6 +326,30 @@ func (s *errorTokenStore) ListTokens() ([]secrets.Token, error) { return nil, s.
 func (s *errorTokenStore) GetDefaultAccount(string) (string, error) { return "", nil }
 
 func (s *errorTokenStore) SetDefaultAccount(string, string) error { return nil }
+
+func TestAuthListWithFallbackSkipsReadableFallbackOnKeyringTimeout(t *testing.T) {
+	store := &errorTokenStore{
+		keys: []string{secrets.TokenKey(config.DefaultClientName, "a@b.com")},
+		err:  errors.New("list tokens: keyring connection timed out after 10s while reading keyring item"),
+	}
+
+	tokens, readErrors, err := listAuthTokensWithFallback(store)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+
+	if !secrets.IsKeyringTimeout(err) {
+		t.Fatalf("expected keyring timeout, got %v", err)
+	}
+
+	if len(tokens) != 0 || len(readErrors) != 0 {
+		t.Fatalf("expected no fallback results, got tokens=%#v readErrors=%#v", tokens, readErrors)
+	}
+
+	if store.keysCalls != 0 {
+		t.Fatalf("fallback should not call Keys after timeout, got %d calls", store.keysCalls)
+	}
+}
 
 func TestAuthDoctor_JSON_ClassifiesFileKeyringIntegrity(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

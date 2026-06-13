@@ -1,7 +1,9 @@
 package secrets
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/99designs/keyring"
@@ -47,6 +49,14 @@ func keyringTimeoutError(operation string, timeout time.Duration, hint string) e
 	return fmt.Errorf("%w after %v while %s (%s); "+
 		"set GOG_KEYRING_BACKEND=file and GOG_KEYRING_PASSWORD=<password> to use encrypted file storage instead",
 		errKeyringTimeout, timeout, operation, hint)
+}
+
+func IsKeyringTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return errors.Is(err, errKeyringTimeout) || strings.Contains(err.Error(), errKeyringTimeout.Error())
 }
 
 func (k *timeoutKeyring) Get(key string) (keyring.Item, error) {
