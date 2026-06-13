@@ -50,7 +50,11 @@ func (c *ZoomAuthSetupCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if flags != nil && flags.NoInput && (strings.TrimSpace(c.AccountID) == "" || strings.TrimSpace(c.ClientID) == "" || strings.TrimSpace(c.ClientSecret) == "") {
 		return usage("provide --account-id, --client-id, and --client-secret with --no-input")
 	}
-	if existing, err := zoom.LoadMetadata(alias); err == nil && flags != nil && !flags.Force {
+	store, err := commandZoomStore(ctx)
+	if err != nil {
+		return err
+	}
+	if existing, loadErr := store.LoadMetadata(alias); loadErr == nil && flags != nil && !flags.Force {
 		return usage(fmt.Sprintf("Zoom credentials for alias %q already exist (account_id=%s); use --force to overwrite", alias, existing.AccountID))
 	}
 	accountID, err := promptDefault(ctx, "Zoom account ID: ", c.AccountID)
@@ -70,7 +74,7 @@ func (c *ZoomAuthSetupCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}
 	creds := zoom.Credentials{AccountID: accountID, ClientID: clientID, ClientSecret: clientSecret}
 	if !c.SkipValidate {
-		client, clientErr := zoom.NewClient(alias, creds)
+		client, clientErr := zoom.NewClient(alias, creds, store)
 		if clientErr != nil {
 			return clientErr
 		}
@@ -78,7 +82,7 @@ func (c *ZoomAuthSetupCmd) Run(ctx context.Context, flags *RootFlags) error {
 			return fmt.Errorf("validate Zoom credentials: %w", validateErr)
 		}
 	}
-	if err := zoom.StoreCredentials(alias, zoom.Metadata{
+	if err := store.StoreCredentials(alias, zoom.Metadata{
 		AccountID: accountID,
 		ClientID:  clientID,
 		Scopes:    defaultZoomScopes,
@@ -111,21 +115,26 @@ func (c *ZoomAuthDoctorCmd) Run(ctx context.Context, _ *RootFlags) error {
 	add := func(name, status, detail, hint string) {
 		checks = append(checks, authDoctorCheck{Name: name, Status: status, Detail: detail, Hint: hint})
 	}
-	creds, err := zoom.LoadCredentials(alias)
+	store, err := commandZoomStore(ctx)
+	if err != nil {
+		add("zoom.store", doctorError, err.Error(), "check config and keyring settings")
+		return writeZoomDoctorResult(ctx, u, checks)
+	}
+	creds, err := store.LoadCredentials(alias)
 	if err != nil {
 		add("zoom.credentials", doctorError, err.Error(), "run `gog zoom auth setup`")
 		return writeZoomDoctorResult(ctx, u, checks)
 	}
 	add("zoom.credentials", doctorOK, "loaded", "")
-	if zoom.EnvClientSecretSet() {
+	if store.EnvClientSecretSet() {
 		add("zoom.env_secret", doctorWarn, "GOG_ZOOM_CLIENT_SECRET is set", "environment secrets can be visible to same-user processes; prefer `gog zoom auth setup`")
 	}
-	if expiresAt, ok := zoom.CachedTokenExpiry(alias); ok {
+	if expiresAt, ok := store.CachedTokenExpiry(alias); ok {
 		add("zoom.token_cache", doctorOK, expiresAt.UTC().Format(time.RFC3339), "")
 	} else {
 		add("zoom.token_cache", doctorWarn, "no cached token", "a token will be fetched on first Zoom API call")
 	}
-	client, clientErr := zoom.NewClient(alias, creds)
+	client, clientErr := zoom.NewClient(alias, creds, store)
 	if clientErr != nil {
 		add("zoom.client", doctorError, clientErr.Error(), "")
 		return writeZoomDoctorResult(ctx, u, checks)

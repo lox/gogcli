@@ -17,7 +17,6 @@ import (
 )
 
 func EnsureIdentity(path string) (string, error) {
-	path = expandHome(path)
 	if data, err := os.ReadFile(path); err == nil { // #nosec G304 -- path is the configured local age identity file.
 		identity, err := parseIdentity(data)
 		if err != nil {
@@ -43,7 +42,7 @@ func EnsureIdentity(path string) (string, error) {
 }
 
 func RecipientFromIdentity(path string) (string, error) {
-	data, err := os.ReadFile(expandHome(path))
+	data, err := os.ReadFile(path) // #nosec G304 -- path is the resolved configured local age identity file.
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +145,7 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 }
 
 func decryptShard(ciphertext []byte, identityPath string) ([]byte, error) {
-	data, err := os.ReadFile(expandHome(identityPath)) // #nosec G304 -- path is the configured local age identity file.
+	data, err := os.ReadFile(identityPath) // #nosec G304 -- path is the resolved configured local age identity file.
 	if err != nil {
 		return nil, err
 	}

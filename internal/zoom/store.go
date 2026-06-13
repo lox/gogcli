@@ -3,10 +3,12 @@ package zoom
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/steipete/gogcli/internal/config"
@@ -25,6 +27,12 @@ const (
 	metadataDirComponent = "zoom"
 )
 
+var (
+	errZoomConfigDirRequired = errors.New("zoom config directory is required")
+	errZoomSecretStoreNil    = errors.New("zoom secret store is nil")
+	errZoomEnvLookupNil      = errors.New("zoom environment lookup is nil")
+)
+
 type Metadata struct {
 	AccountID string   `json:"account_id"`
 	ClientID  string   `json:"client_id"`
@@ -37,6 +45,44 @@ type CachedToken struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
+type (
+	EnvLookup          func(string) (string, bool)
+	SecretStoreFactory func() (secrets.SecretStore, error)
+)
+
+type TokenStore interface {
+	LoadCachedToken(alias string) (CachedToken, error)
+	StoreCachedToken(alias string, tok CachedToken) error
+}
+
+type Store struct {
+	metadataDir string
+	lookupEnv   EnvLookup
+	openSecrets SecretStoreFactory
+	secretOnce  sync.Once
+	secrets     secrets.SecretStore
+	secretErr   error
+}
+
+func NewStore(layout config.Layout, openSecrets SecretStoreFactory, lookupEnv EnvLookup) (*Store, error) {
+	configDir := strings.TrimSpace(layout.ConfigDir)
+	if configDir == "" || !filepath.IsAbs(configDir) {
+		return nil, fmt.Errorf("%w: %s", errZoomConfigDirRequired, configDir)
+	}
+	if openSecrets == nil {
+		return nil, errZoomSecretStoreNil
+	}
+	if lookupEnv == nil {
+		return nil, errZoomEnvLookupNil
+	}
+
+	return &Store{
+		metadataDir: filepath.Join(configDir, metadataDirComponent),
+		lookupEnv:   lookupEnv,
+		openSecrets: openSecrets,
+	}, nil
+}
+
 func NormalizeAlias(alias string) string {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -45,21 +91,32 @@ func NormalizeAlias(alias string) string {
 	return alias
 }
 
-func EnvClientSecretSet() bool {
-	_, ok := os.LookupEnv(envClientSecret)
+func (s *Store) EnvClientSecretSet() bool {
+	if s == nil || s.lookupEnv == nil {
+		return false
+	}
+	_, ok := s.lookupEnv(envClientSecret)
 	return ok
 }
 
-func LoadCredentials(alias string) (Credentials, error) {
-	if creds, ok := credentialsFromEnv(); ok {
+func (s *Store) LoadCredentials(alias string) (Credentials, error) {
+	if s == nil {
+		return Credentials{}, ErrCredentialsNotFound
+	}
+	if creds, ok := s.credentialsFromEnv(); ok {
 		return creds, nil
 	}
-	alias = NormalizeAlias(alias)
-	meta, err := LoadMetadata(alias)
+
+	alias = storageAlias(alias)
+	meta, err := s.LoadMetadata(alias)
 	if err != nil {
 		return Credentials{}, ErrCredentialsNotFound
 	}
-	secret, err := secrets.GetSecret(clientSecretKey(alias))
+	secretStore, err := s.secretStore()
+	if err != nil {
+		return Credentials{}, ErrCredentialsNotFound
+	}
+	secret, err := secretStore.GetSecret(clientSecretKey(alias))
 	if err != nil {
 		return Credentials{}, ErrCredentialsNotFound
 	}
@@ -74,11 +131,11 @@ func LoadCredentials(alias string) (Credentials, error) {
 	return creds, nil
 }
 
-func credentialsFromEnv() (Credentials, bool) {
+func (s *Store) credentialsFromEnv() (Credentials, bool) {
 	creds := Credentials{
-		AccountID:    strings.TrimSpace(os.Getenv(envAccountID)),
-		ClientID:     strings.TrimSpace(os.Getenv(envClientID)),
-		ClientSecret: strings.TrimSpace(os.Getenv(envClientSecret)),
+		AccountID:    strings.TrimSpace(s.env(envAccountID)),
+		ClientID:     strings.TrimSpace(s.env(envClientID)),
+		ClientSecret: strings.TrimSpace(s.env(envClientSecret)),
 	}
 	if creds.AccountID == "" && creds.ClientID == "" && creds.ClientSecret == "" {
 		return Credentials{}, false
@@ -89,27 +146,34 @@ func credentialsFromEnv() (Credentials, bool) {
 	return creds, true
 }
 
-func StoreCredentials(alias string, metadata Metadata, clientSecret string) error {
-	alias = NormalizeAlias(alias)
+func (s *Store) StoreCredentials(alias string, metadata Metadata, clientSecret string) error {
+	if s == nil {
+		return ErrCredentialsNotFound
+	}
+	alias = storageAlias(alias)
 	metadata.Alias = alias
 	if strings.TrimSpace(metadata.AccountID) == "" || strings.TrimSpace(metadata.ClientID) == "" || strings.TrimSpace(clientSecret) == "" {
 		return ErrCredentialsNotFound
 	}
-	if err := WriteMetadata(alias, metadata); err != nil {
+	if err := s.WriteMetadata(alias, metadata); err != nil {
 		return err
 	}
-	if err := secrets.SetSecret(clientSecretKey(alias), []byte(clientSecret)); err != nil {
+	secretStore, err := s.secretStore()
+	if err != nil {
+		return err
+	}
+	if err := secretStore.SetSecret(clientSecretKey(alias), []byte(clientSecret)); err != nil {
 		return fmt.Errorf("store zoom client secret: %w", err)
 	}
 	return nil
 }
 
-func LoadMetadata(alias string) (Metadata, error) {
-	path, err := metadataPath(alias)
+func (s *Store) LoadMetadata(alias string) (Metadata, error) {
+	path, err := s.metadataPath(alias)
 	if err != nil {
 		return Metadata{}, err
 	}
-	b, err := os.ReadFile(path) //nolint:gosec // path is inside gogcli config dir
+	b, err := os.ReadFile(path) //nolint:gosec // path is inside the injected gogcli config dir.
 	if err != nil {
 		return Metadata{}, fmt.Errorf("read zoom metadata: %w", err)
 	}
@@ -120,21 +184,17 @@ func LoadMetadata(alias string) (Metadata, error) {
 	return meta, nil
 }
 
-func WriteMetadata(alias string, metadata Metadata) error {
-	dir, err := metadataDir()
+func (s *Store) WriteMetadata(alias string, metadata Metadata) error {
+	path, err := s.metadataPath(alias)
 	if err != nil {
 		return err
 	}
-	if mkdirErr := os.MkdirAll(dir, metadataDirMode); mkdirErr != nil {
+	if mkdirErr := os.MkdirAll(s.metadataDir, metadataDirMode); mkdirErr != nil {
 		return fmt.Errorf("ensure zoom config dir: %w", mkdirErr)
 	}
 	b, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode zoom metadata: %w", err)
-	}
-	path, err := metadataPath(alias)
-	if err != nil {
-		return err
 	}
 	if err := config.WriteFileAtomic(path, append(b, '\n'), metadataFileMode); err != nil {
 		return fmt.Errorf("write zoom metadata: %w", err)
@@ -142,8 +202,15 @@ func WriteMetadata(alias string, metadata Metadata) error {
 	return nil
 }
 
-func LoadCachedToken(alias string) (CachedToken, error) {
-	b, err := secrets.GetSecret(accessTokenKey(NormalizeAlias(alias)))
+func (s *Store) LoadCachedToken(alias string) (CachedToken, error) {
+	if s == nil {
+		return CachedToken{}, errZoomSecretStoreNil
+	}
+	secretStore, err := s.secretStore()
+	if err != nil {
+		return CachedToken{}, err
+	}
+	b, err := secretStore.GetSecret(accessTokenKey(storageAlias(alias)))
 	if err != nil {
 		return CachedToken{}, fmt.Errorf("read zoom cached token: %w", err)
 	}
@@ -154,46 +221,69 @@ func LoadCachedToken(alias string) (CachedToken, error) {
 	return tok, nil
 }
 
-func StoreCachedToken(alias string, tok CachedToken) error {
+func (s *Store) StoreCachedToken(alias string, tok CachedToken) error {
+	if s == nil {
+		return errZoomSecretStoreNil
+	}
 	b, err := json.Marshal(tok) //nolint:gosec // Token cache is intentionally stored in the keyring.
 	if err != nil {
 		return fmt.Errorf("encode zoom cached token: %w", err)
 	}
-	if err := secrets.SetSecret(accessTokenKey(NormalizeAlias(alias)), b); err != nil {
+	secretStore, err := s.secretStore()
+	if err != nil {
+		return err
+	}
+	if err := secretStore.SetSecret(accessTokenKey(storageAlias(alias)), b); err != nil {
 		return fmt.Errorf("store zoom cached token: %w", err)
 	}
 	return nil
 }
 
-func CachedTokenExpiry(alias string) (time.Time, bool) {
-	tok, err := LoadCachedToken(alias)
+func (s *Store) CachedTokenExpiry(alias string) (time.Time, bool) {
+	tok, err := s.LoadCachedToken(alias)
 	if err != nil {
 		return time.Time{}, false
 	}
 	return tok.ExpiresAt, !tok.ExpiresAt.IsZero()
 }
 
-func metadataDir() (string, error) {
-	dir, err := config.EnsureDir()
-	if err != nil {
-		return "", fmt.Errorf("ensure config dir: %w", err)
+func (s *Store) metadataPath(alias string) (string, error) {
+	if s == nil || strings.TrimSpace(s.metadataDir) == "" {
+		return "", errZoomConfigDirRequired
 	}
-	return filepath.Join(dir, metadataDirComponent), nil
+	alias = storageAlias(alias)
+	return filepath.Join(s.metadataDir, alias+".json"), nil
 }
 
-func metadataPath(alias string) (string, error) {
-	dir, err := metadataDir()
-	if err != nil {
-		return "", err
+func (s *Store) env(key string) string {
+	if s == nil || s.lookupEnv == nil {
+		return ""
 	}
-	alias = strings.ReplaceAll(NormalizeAlias(alias), string(filepath.Separator), "_")
-	return filepath.Join(dir, alias+".json"), nil
+	value, _ := s.lookupEnv(key)
+	return value
+}
+
+func (s *Store) secretStore() (secrets.SecretStore, error) {
+	if s == nil || s.openSecrets == nil {
+		return nil, errZoomSecretStoreNil
+	}
+	s.secretOnce.Do(func() {
+		s.secrets, s.secretErr = s.openSecrets()
+		if s.secretErr == nil && s.secrets == nil {
+			s.secretErr = errZoomSecretStoreNil
+		}
+	})
+	return s.secrets, s.secretErr
 }
 
 func clientSecretKey(alias string) string {
-	return fmt.Sprintf(clientSecretKeyFmt, NormalizeAlias(alias))
+	return fmt.Sprintf(clientSecretKeyFmt, storageAlias(alias))
 }
 
 func accessTokenKey(alias string) string {
-	return fmt.Sprintf(accessTokenKeyFmt, NormalizeAlias(alias))
+	return fmt.Sprintf(accessTokenKeyFmt, storageAlias(alias))
+}
+
+func storageAlias(alias string) string {
+	return strings.NewReplacer("/", "_", "\\", "_").Replace(NormalizeAlias(alias))
 }

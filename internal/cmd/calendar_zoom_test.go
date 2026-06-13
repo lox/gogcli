@@ -58,7 +58,7 @@ func (f *fakeZoomCalendarClient) DeleteMeeting(_ context.Context, id string) err
 
 func withFakeZoomClient(ctx context.Context, client *fakeZoomCalendarClient) context.Context {
 	return withTestRuntime(ctx, func(runtime *app.Runtime) {
-		runtime.Services.Zoom = func(string) (app.ZoomMeetingClient, error) {
+		runtime.Services.Zoom = func(context.Context, string) (app.ZoomMeetingClient, error) {
 			if client.err != nil && errors.Is(client.err, zoom.ErrCredentialsNotFound) {
 				return nil, client.err
 			}
@@ -121,7 +121,7 @@ func TestCalendarCreateCmd_DryRunWithZoomReportsZoomIntent(t *testing.T) {
 		"--to", "2026-05-18T10:30:00Z",
 		"--with-zoom",
 	}, &app.Runtime{Services: app.Services{
-		Zoom: func(string) (app.ZoomMeetingClient, error) {
+		Zoom: func(context.Context, string) (app.ZoomMeetingClient, error) {
 			t.Fatal("dry-run must not create Zoom client")
 			return nil, errors.New("unexpected Zoom client")
 		},
@@ -157,7 +157,7 @@ func TestCalendarUpdateCmd_DryRunWithZoomReportsZoomIntent(t *testing.T) {
 			t.Fatal("dry-run must not create Calendar service")
 			return nil, errors.New("unexpected Calendar service")
 		},
-		Zoom: func(string) (app.ZoomMeetingClient, error) {
+		Zoom: func(context.Context, string) (app.ZoomMeetingClient, error) {
 			t.Fatal("dry-run must not create Zoom client")
 			return nil, errors.New("unexpected Zoom client")
 		},

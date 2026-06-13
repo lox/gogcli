@@ -33,20 +33,18 @@ func (rt rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return resp, nil
 }
 
-func newTestClient(t *testing.T, srv *httptest.Server, alias string, now time.Time) *Client {
+func newTestClient(t *testing.T, srv *httptest.Server, alias string, now time.Time) (*Client, *Store) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("GOG_KEYRING_BACKEND", "file")
-	t.Setenv("GOG_KEYRING_PASSWORD", "test-pass")
+	store, _ := newTestStore(t)
 	client, err := NewClient(alias, Credentials{
 		AccountID:    "acct",
 		ClientID:     "client",
 		ClientSecret: "secret",
-	}, WithRoundTripper(rewriteTransport{target: srv.URL, base: srv.Client().Transport}), WithNow(func() time.Time { return now }))
+	}, store, WithRoundTripper(rewriteTransport{target: srv.URL, base: srv.Client().Transport}), WithNow(func() time.Time { return now }))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	return client
+	return client, store
 }
 
 func TestClientTokenRefreshUsesCachedTokenUntilSkew(t *testing.T) {
@@ -70,7 +68,7 @@ func TestClientTokenRefreshUsesCachedTokenUntilSkew(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(t, srv, "cache", now)
+	client, store := newTestClient(t, srv, "cache", now)
 	if _, err := client.CreateMeeting(context.Background(), "me", CreateMeetingRequest{}); err != nil {
 		t.Fatalf("CreateMeeting first: %v", err)
 	}
@@ -81,7 +79,7 @@ func TestClientTokenRefreshUsesCachedTokenUntilSkew(t *testing.T) {
 		t.Fatalf("tokenRequests = %d, want 1", tokenRequests)
 	}
 
-	if err := StoreCachedToken("cache", CachedToken{AccessToken: "stale", ExpiresAt: now.Add(30 * time.Second)}); err != nil {
+	if err := store.StoreCachedToken("cache", CachedToken{AccessToken: "stale", ExpiresAt: now.Add(30 * time.Second)}); err != nil {
 		t.Fatalf("StoreCachedToken: %v", err)
 	}
 	if _, err := client.CreateMeeting(context.Background(), "me", CreateMeetingRequest{}); err != nil {
@@ -103,7 +101,7 @@ func TestClientDeleteMeetingIgnores404And410(t *testing.T) {
 				w.WriteHeader(status)
 			}))
 			defer srv.Close()
-			client := newTestClient(t, srv, strings.ReplaceAll(http.StatusText(status), " ", "-"), time.Now())
+			client, _ := newTestClient(t, srv, strings.ReplaceAll(http.StatusText(status), " ", "-"), time.Now())
 			if err := client.DeleteMeeting(context.Background(), "123"); err != nil {
 				t.Fatalf("DeleteMeeting: %v", err)
 			}
@@ -120,7 +118,7 @@ func TestClientDeleteMeeting5xxError(t *testing.T) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	client := newTestClient(t, srv, "fivehundred", time.Now())
+	client, _ := newTestClient(t, srv, "fivehundred", time.Now())
 	err := client.DeleteMeeting(context.Background(), "123")
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("DeleteMeeting error = %v, want 500", err)

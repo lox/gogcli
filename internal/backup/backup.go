@@ -111,7 +111,7 @@ func Init(ctx context.Context, opts Options) (Config, string, error) {
 	if len(cfg.Recipients) == 0 {
 		cfg.Recipients = []string{recipient}
 	}
-	if err := SaveConfig(opts.ConfigPath, cfg); err != nil {
+	if err := opts.ConfigStore.Save(opts.ConfigPath, cfg); err != nil {
 		return Config{}, "", err
 	}
 	if err := ensureRepo(ctx, cfg); err != nil {

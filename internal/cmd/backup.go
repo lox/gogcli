@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/steipete/gogcli/internal/backup"
+	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/outfmt"
 	"github.com/steipete/gogcli/internal/ui"
 )
@@ -83,12 +85,31 @@ func (f backupReadFlags) options() backup.Options {
 	}
 }
 
+func bindBackupConfigStore(ctx context.Context, opts *backup.Options) error {
+	if opts == nil || opts.ConfigStore != nil {
+		return nil
+	}
+	layout, err := commandLayout(ctx, config.PathKindConfig)
+	if err != nil {
+		return err
+	}
+	store, err := backup.NewConfigStore(layout, os.UserHomeDir)
+	if err != nil {
+		return err
+	}
+	opts.ConfigStore = store
+	return nil
+}
+
 type BackupInitCmd struct {
 	backupFlags
 }
 
 func (c *BackupInitCmd) Run(ctx context.Context, flags *RootFlags) error {
 	opts := c.options()
+	if err := bindBackupConfigStore(ctx, &opts); err != nil {
+		return err
+	}
 	if c.NoPush && strings.TrimSpace(c.Remote) == "" {
 		opts.SuppressDefaultRemote = true
 	}
@@ -157,6 +178,9 @@ func (c *BackupPushCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 	backupOpts := c.options()
+	if err := bindBackupConfigStore(ctx, &backupOpts); err != nil {
+		return err
+	}
 	backupOpts.AsyncPush = c.GmailCheckpoints
 	backupOpts.Progress = func(format string, args ...any) { gmailBackupProgressf(ctx, format, args...) }
 	snapshots, err := buildBackupSnapshots(services, c.snapshotBuilders(ctx, flags, backupOpts))
@@ -225,6 +249,9 @@ func (c *BackupGmailPushCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 	backupOpts := c.options()
+	if err := bindBackupConfigStore(ctx, &backupOpts); err != nil {
+		return err
+	}
 	backupOpts.AsyncPush = c.Checkpoints
 	backupOpts.Progress = func(format string, args ...any) { gmailBackupProgressf(ctx, format, args...) }
 	snapshot, err := buildGmailBackupSnapshot(ctx, flags, gmailBackupOptions{
@@ -270,7 +297,11 @@ type BackupStatusCmd struct {
 }
 
 func (c *BackupStatusCmd) Run(ctx context.Context) error {
-	manifest, repo, err := backup.Status(ctx, c.options())
+	opts := c.options()
+	if err := bindBackupConfigStore(ctx, &opts); err != nil {
+		return err
+	}
+	manifest, repo, err := backup.Status(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -300,7 +331,11 @@ type BackupVerifyCmd struct {
 }
 
 func (c *BackupVerifyCmd) Run(ctx context.Context) error {
-	result, err := backup.Verify(ctx, c.options())
+	opts := c.options()
+	if err := bindBackupConfigStore(ctx, &opts); err != nil {
+		return err
+	}
+	result, err := backup.Verify(ctx, opts)
 	if err != nil {
 		return err
 	}

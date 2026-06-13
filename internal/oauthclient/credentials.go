@@ -18,9 +18,6 @@ var (
 	errEmptyClientSecret  = errors.New("OAuth client secret in keyring is empty")
 	errNilCredentialFiles = errors.New("credential file store is nil")
 	errNilSecretStore     = errors.New("secret store is nil")
-	setSecret             = secrets.SetSecret
-	getSecret             = secrets.GetSecret
-	deleteSecret          = secrets.DeleteSecret
 )
 
 type CredentialsStore struct {
@@ -39,29 +36,6 @@ func NewCredentialsStore(files *config.ClientCredentialsStore, secretStore secre
 	return &CredentialsStore{files: files, secrets: secretStore}, nil
 }
 
-type secretFuncs struct{}
-
-func (secretFuncs) SetSecret(key string, value []byte) error {
-	return setSecret(key, value)
-}
-
-func (secretFuncs) GetSecret(key string) ([]byte, error) {
-	return getSecret(key)
-}
-
-func (secretFuncs) DeleteSecret(key string) error {
-	return deleteSecret(key)
-}
-
-func defaultCredentialsStore() (*CredentialsStore, error) {
-	files, err := config.DefaultClientCredentialsStore()
-	if err != nil {
-		return nil, fmt.Errorf("resolve credential store: %w", err)
-	}
-
-	return NewCredentialsStore(files, secretFuncs{})
-}
-
 func ClientSecretKey(client string) (string, error) {
 	normalized, err := config.NormalizeClientNameOrDefault(client)
 	if err != nil {
@@ -70,13 +44,12 @@ func ClientSecretKey(client string) (string, error) {
 	return fmt.Sprintf(clientSecretKeyFmt, normalized), nil
 }
 
-func WriteClientCredentialsFor(client string, creds config.ClientCredentials, insecure bool) error {
-	store, err := defaultCredentialsStore()
+func (s *CredentialsStore) PathFor(client string) (string, error) {
+	path, err := s.files.PathFor(client)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("resolve credentials path: %w", err)
 	}
-
-	return store.Write(client, creds, insecure)
+	return path, nil
 }
 
 func (s *CredentialsStore) Write(client string, creds config.ClientCredentials, insecure bool) error {
@@ -110,15 +83,6 @@ func (s *CredentialsStore) Write(client string, creds config.ClientCredentials, 
 	return nil
 }
 
-func ReadClientCredentialsFor(client string) (config.ClientCredentials, error) {
-	store, err := defaultCredentialsStore()
-	if err != nil {
-		return config.ClientCredentials{}, err
-	}
-
-	return store.Read(client)
-}
-
 func (s *CredentialsStore) Read(client string) (config.ClientCredentials, error) {
 	normalized, err := config.NormalizeClientNameOrDefault(client)
 	if err != nil {
@@ -144,15 +108,6 @@ func (s *CredentialsStore) Read(client string) (config.ClientCredentials, error)
 		return config.ClientCredentials{}, errEmptyClientSecret
 	}
 	return creds, nil
-}
-
-func DeleteClientCredentialsFor(client string) error {
-	store, err := defaultCredentialsStore()
-	if err != nil {
-		return err
-	}
-
-	return store.Delete(client)
 }
 
 func (s *CredentialsStore) Delete(client string) error {

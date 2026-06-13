@@ -50,6 +50,7 @@ type RootFlags struct {
 	Verbose             bool   `help:"Enable verbose logging" short:"v"`
 	diagnostics         io.Writer
 	authOperations      app.AuthOperations
+	configStoreResolver func() (*config.ConfigStore, error)
 }
 
 type CLI struct {
@@ -207,6 +208,27 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 
 	ctx := context.Background()
 	ctx = app.WithRuntime(ctx, runtime)
+	runtimeContext := ctx
+	cli.configStoreResolver = func() (*config.ConfigStore, error) {
+		return commandConfigStore(runtimeContext)
+	}
+	ctx = authclient.WithCredentialsReader(ctx, func(client string) (config.ClientCredentials, error) {
+		store, resolveErr := commandOAuthCredentialsStore(runtimeContext)
+		if resolveErr != nil {
+			return config.ClientCredentials{}, resolveErr
+		}
+		return store.Read(client)
+	})
+	ctx = authclient.WithSecretsStoreOpener(ctx, func() (secrets.Store, error) {
+		return runtime.Auth.OpenSecretsStore()
+	})
+	ctx = authclient.WithEmailReferenceUpdater(ctx, func(oldEmail, newEmail string) error {
+		store, resolveErr := cli.configStoreResolver()
+		if resolveErr != nil {
+			return resolveErr
+		}
+		return store.MigrateAccountEmailReferences(oldEmail, newEmail)
+	})
 	ctx = authclient.WithClientResolver(ctx, func(email string, override string) (string, error) {
 		return resolveRuntimeClient(runtime, cli.Home, email, override)
 	})

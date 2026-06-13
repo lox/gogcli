@@ -480,7 +480,7 @@ func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
-	if saveErr := backup.SaveConfig(config, backup.Config{
+	if saveErr := backupOptionsForCmdTest(t, backup.Options{ConfigPath: config}).ConfigStore.Save(config, backup.Config{
 		Repo:       repo,
 		Identity:   identity,
 		Recipients: []string{recipient},
@@ -510,7 +510,7 @@ func TestEnsureGmailBackupMessageCacheWritesEncryptedCheckpoints(t *testing.T) {
 		Checkpoints:      true,
 		CheckpointRows:   2,
 		CheckpointRunID:  "run-test",
-		BackupOptions:    backup.Options{ConfigPath: config, Push: false},
+		BackupOptions:    backupOptionsForCmdTest(t, backup.Options{ConfigPath: config, Push: false}),
 		Cache:            cache,
 	}, ids)
 	if err != nil {
@@ -558,7 +558,7 @@ func TestBuildGmailMessageShardsFromCheckpointPromotesCompleteRun(t *testing.T) 
 		Account: "accthash",
 		Done:    2,
 		Total:   2,
-	}, backup.Options{ConfigPath: config, Push: false}); pushErr != nil {
+	}, backupOptionsForCmdTest(t, backup.Options{ConfigPath: config, Push: false})); pushErr != nil {
 		t.Fatalf("PushCheckpoint: %v", pushErr)
 	}
 
@@ -567,7 +567,7 @@ func TestBuildGmailMessageShardsFromCheckpointPromotesCompleteRun(t *testing.T) 
 		CacheMessages:   true,
 		Checkpoints:     true,
 		CheckpointRunID: "run-test",
-		BackupOptions:   backup.Options{ConfigPath: config},
+		BackupOptions:   backupOptionsForCmdTest(t, backup.Options{ConfigPath: config}),
 	}, []string{"m1", "m2"})
 	if err != nil {
 		t.Fatalf("buildGmailMessageShardsFromCheckpoint: %v", err)
@@ -595,7 +595,7 @@ func TestGmailBackupResolvedCheckpointRunIDReusesSelectionRun(t *testing.T) {
 		CacheMessages:    true,
 		Checkpoints:      true,
 		IncludeSpamTrash: true,
-		BackupOptions:    backup.Options{ConfigPath: config},
+		BackupOptions:    backupOptionsForCmdTest(t, backup.Options{ConfigPath: config}),
 	}
 	runID := "20260428T010203Z-" + gmailBackupCheckpointRunIDSuffix(opts, ids)
 	checkpointShard, err := backup.NewJSONLShard(backupServiceGmail, "messages", "accthash", fmt.Sprintf("checkpoints/gmail/accthash/%s/messages/part-000001.jsonl.gz.age", runID), []gmailBackupMessage{
@@ -615,7 +615,7 @@ func TestGmailBackupResolvedCheckpointRunIDReusesSelectionRun(t *testing.T) {
 		Account: "accthash",
 		Done:    1,
 		Total:   1,
-	}, backup.Options{ConfigPath: config, Push: false}); err != nil {
+	}, backupOptionsForCmdTest(t, backup.Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushCheckpoint: %v", err)
 	}
 
@@ -999,9 +999,7 @@ func newBackupConfigForCmdTest(t *testing.T) (string, string, []string) {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
 	recipients := []string{recipient}
-	if err := backup.SaveConfig(config, backup.Config{Repo: repo, Identity: identity, Recipients: recipients}); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveBackupConfigForCmdTest(t, config, backup.Config{Repo: repo, Identity: identity, Recipients: recipients})
 	return repo, config, recipients
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/steipete/gogcli/internal/authclient"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/secrets"
 )
@@ -319,7 +320,51 @@ func TestStartManageServerOpenStoreError(t *testing.T) {
 		return nil, errTestStoreBoom
 	}
 
-	if err := StartManageServer(context.Background(), ManageServerOptions{Timeout: time.Second}); err == nil {
+	if err := StartManageServer(context.Background(), ManageServerOptions{
+		Timeout:               time.Second,
+		UpdateEmailReferences: func(string, string) error { return nil },
+	}); err == nil {
 		t.Fatalf("expected error")
+	}
+}
+
+func TestManageCredentialsReaderUsesContext(t *testing.T) {
+	origRead := readClientCredentials
+
+	t.Cleanup(func() { readClientCredentials = origRead })
+	readClientCredentials = nil
+
+	ctx := authclient.WithCredentialsReader(context.Background(), func(client string) (config.ClientCredentials, error) {
+		if client != "work" {
+			t.Fatalf("client = %q", client)
+		}
+
+		return config.ClientCredentials{ClientID: "id", ClientSecret: "secret"}, nil
+	})
+
+	credentials, err := manageCredentialsReader(ctx, nil)("work")
+	if err != nil {
+		t.Fatalf("read credentials: %v", err)
+	}
+
+	if credentials.ClientID != "id" || credentials.ClientSecret != "secret" {
+		t.Fatalf("credentials = %#v", credentials)
+	}
+}
+
+func TestManageCredentialsReaderPreservesOverride(t *testing.T) {
+	called := false
+	reader := manageCredentialsReader(context.Background(), func(client string) (config.ClientCredentials, error) {
+		called = true
+		return config.ClientCredentials{ClientID: client}, nil
+	})
+
+	credentials, err := reader("custom")
+	if err != nil {
+		t.Fatalf("read credentials: %v", err)
+	}
+
+	if !called || credentials.ClientID != "custom" {
+		t.Fatalf("called = %v, credentials = %#v", called, credentials)
 	}
 }

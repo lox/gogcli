@@ -21,10 +21,15 @@ import (
 type memSecretsStore struct {
 	tokens   map[string]secrets.Token
 	defaults map[string]string
+	secrets  map[string][]byte
 }
 
 func newMemSecretsStore() *memSecretsStore {
-	return &memSecretsStore{tokens: make(map[string]secrets.Token), defaults: make(map[string]string)}
+	return &memSecretsStore{
+		tokens:   make(map[string]secrets.Token),
+		defaults: make(map[string]string),
+		secrets:  make(map[string][]byte),
+	}
 }
 
 func normalizeEmailTest(s string) string {
@@ -110,6 +115,27 @@ func (s *memSecretsStore) SetDefaultAccount(client string, email string) error {
 		client = config.DefaultClientName
 	}
 	s.defaults[client] = email
+	return nil
+}
+
+func (s *memSecretsStore) SetSecret(key string, value []byte) error {
+	s.secrets[key] = append([]byte(nil), value...)
+	return nil
+}
+
+func (s *memSecretsStore) GetSecret(key string) ([]byte, error) {
+	value, ok := s.secrets[key]
+	if !ok {
+		return nil, keyring.ErrKeyNotFound
+	}
+	return append([]byte(nil), value...), nil
+}
+
+func (s *memSecretsStore) DeleteSecret(key string) error {
+	if _, ok := s.secrets[key]; !ok {
+		return keyring.ErrKeyNotFound
+	}
+	delete(s.secrets, key)
 	return nil
 }
 

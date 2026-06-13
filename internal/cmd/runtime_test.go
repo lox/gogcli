@@ -167,6 +167,14 @@ func TestNormalizedRuntimeOpensSecretsWithInjectedConfig(t *testing.T) {
 	if errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("OpenSecretsStore() read ambient config instead of injected store: %v", err)
 	}
+
+	_, err = runtime.Auth.OpenSecretStore()
+	if err == nil || !strings.Contains(err.Error(), "invalid keyring backend") {
+		t.Fatalf("OpenSecretStore() error = %v, want injected backend validation", err)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenSecretStore() read ambient config instead of injected store: %v", err)
+	}
 }
 
 func TestExecuteRuntimeRoutesMigratedCommandOutput(t *testing.T) {

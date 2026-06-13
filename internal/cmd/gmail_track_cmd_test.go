@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,8 +11,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/steipete/gogcli/internal/app"
+	"github.com/steipete/gogcli/internal/config"
+	"github.com/steipete/gogcli/internal/secrets"
 	"github.com/steipete/gogcli/internal/tracking"
 )
+
+var errUnexpectedTrackingSecretStoreOpen = errors.New("unexpected tracking secret store open")
 
 func setupTrackingEnv(t *testing.T) {
 	t.Helper()
@@ -19,6 +26,208 @@ func setupTrackingEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
 	t.Setenv("GOG_KEYRING_BACKEND", "file")
 	t.Setenv("GOG_KEYRING_PASSWORD", "testpass")
+}
+
+func trackingConfigStoreForTest(t *testing.T) *tracking.ConfigStore {
+	t.Helper()
+	layout, err := config.ResolveSystemLayoutFor("", config.PathKindConfig, config.PathKindState)
+	if err != nil {
+		t.Fatalf("resolve tracking layout: %v", err)
+	}
+	legacyConfigBase := ""
+	if !layout.ExplicitState {
+		legacyConfigBase, err = config.ResolveUserConfigBase()
+		if err != nil {
+			t.Fatalf("resolve user config base: %v", err)
+		}
+	}
+	store, err := tracking.NewConfigStore(layout, legacyConfigBase, nil)
+	if err != nil {
+		t.Fatalf("new tracking config store: %v", err)
+	}
+	return store
+}
+
+func saveTrackingConfigForTest(t *testing.T, cfg *tracking.Config) {
+	t.Helper()
+	if err := trackingConfigStoreForTest(t).Save("a@b.com", cfg); err != nil {
+		t.Fatalf("save tracking config: %v", err)
+	}
+}
+
+func TestTrackingConfigStoreUsesRuntimeLayout(t *testing.T) {
+	root := t.TempDir()
+	runtimeConfigDir := filepath.Join(root, "runtime-config")
+	runtimeStateDir := filepath.Join(root, "runtime-state")
+	ambientConfigDir := filepath.Join(root, "ambient-config")
+	ambientStateDir := filepath.Join(root, "ambient-state")
+	t.Setenv("GOG_CONFIG_DIR", ambientConfigDir)
+	t.Setenv("GOG_STATE_DIR", ambientStateDir)
+
+	ctx := withTestRuntime(newCmdRuntimeOutputContext(t, io.Discard, io.Discard), func(runtime *app.Runtime) {
+		runtime.Layout = config.Layout{
+			ConfigDir:      runtimeConfigDir,
+			StateDir:       runtimeStateDir,
+			ExplicitConfig: true,
+			ExplicitState:  true,
+		}
+	})
+	store, err := newTrackingConfigStore(ctx, nil)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	if err := store.Save("a@b.com", &tracking.Config{
+		Enabled:     true,
+		WorkerURL:   "https://example.com",
+		TrackingKey: "track",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	expected := filepath.Join(runtimeStateDir, "tracking.json")
+	if store.Path() != expected {
+		t.Fatalf("path = %q, want %q", store.Path(), expected)
+	}
+	if _, err := os.Stat(expected); err != nil {
+		t.Fatalf("runtime state file: %v", err)
+	}
+	for _, path := range []string{ambientConfigDir, ambientStateDir} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("ambient path unexpectedly touched: %s (%v)", path, err)
+		}
+	}
+}
+
+func TestGmailTrackCommandsUseRuntimeSecretStore(t *testing.T) {
+	ambientHome := t.TempDir()
+	t.Setenv("GOG_HOME", ambientHome)
+	t.Setenv("GOG_KEYRING_BACKEND", "file")
+	t.Setenv("GOG_KEYRING_PASSWORD", "ambient-password")
+
+	runtimeRoot := t.TempDir()
+	secretStore := newMemSecretsStore()
+	runtime := &app.Runtime{
+		Layout: config.Layout{
+			ConfigDir:      filepath.Join(runtimeRoot, "config"),
+			StateDir:       filepath.Join(runtimeRoot, "state"),
+			ExplicitConfig: true,
+			ExplicitState:  true,
+		},
+		Auth: app.AuthOperations{
+			OpenSecretStore: func() (secrets.SecretStore, error) {
+				return secretStore, nil
+			},
+		},
+	}
+	account := "runtime@example.com"
+
+	setupResult := executeWithTestRuntime(t, []string{
+		"--account", account,
+		"--no-input",
+		"--json",
+		"gmail", "track", "setup",
+		"--worker-url", "https://example.com",
+		"--tracking-key", "track-v1",
+		"--admin-key", "admin",
+	}, runtime)
+	if setupResult.err != nil {
+		t.Fatalf("setup: %v", setupResult.err)
+	}
+
+	statusResult := executeWithTestRuntime(t, []string{
+		"--account", account,
+		"--json",
+		"gmail", "track", "status",
+	}, runtime)
+	if statusResult.err != nil {
+		t.Fatalf("status: %v", statusResult.err)
+	}
+	if !strings.Contains(statusResult.stdout, `"configured": true`) {
+		t.Fatalf("status output = %q", statusResult.stdout)
+	}
+
+	rotateResult := executeWithTestRuntime(t, []string{
+		"--account", account,
+		"--no-input",
+		"--json",
+		"gmail", "track", "key", "rotate",
+		"--no-deploy",
+	}, runtime)
+	if rotateResult.err != nil {
+		t.Fatalf("rotate: %v", rotateResult.err)
+	}
+
+	for _, key := range []string{
+		"tracking/runtime@example.com/tracking_key_v1",
+		"tracking/runtime@example.com/tracking_key_v2",
+		"tracking/runtime@example.com/tracking_key",
+		"tracking/runtime@example.com/admin_key",
+	} {
+		if _, ok := secretStore.secrets[key]; !ok {
+			t.Fatalf("runtime secret %q not written: %#v", key, secretStore.secrets)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(ambientHome, "data", "keyring")); !os.IsNotExist(err) {
+		t.Fatalf("ambient keyring touched: %v", err)
+	}
+}
+
+func TestGmailTrackInlineSecretsDoNotOpenRuntimeSecretStore(t *testing.T) {
+	root := t.TempDir()
+	layout := config.Layout{
+		ConfigDir:      filepath.Join(root, "config"),
+		StateDir:       filepath.Join(root, "state"),
+		ExplicitConfig: true,
+		ExplicitState:  true,
+	}
+	store, err := tracking.NewConfigStore(layout, "", nil)
+	if err != nil {
+		t.Fatalf("NewConfigStore: %v", err)
+	}
+	account := "inline@example.com"
+	if saveErr := store.Save(account, &tracking.Config{
+		Enabled:     true,
+		WorkerURL:   "https://example.com",
+		TrackingKey: "inline-track",
+		AdminKey:    "inline-admin",
+	}); saveErr != nil {
+		t.Fatalf("Save: %v", saveErr)
+	}
+
+	opened := false
+	runtime := &app.Runtime{
+		Layout: layout,
+		Auth: app.AuthOperations{
+			OpenSecretStore: func() (secrets.SecretStore, error) {
+				opened = true
+				return nil, errUnexpectedTrackingSecretStoreOpen
+			},
+		},
+	}
+	statusResult := executeWithTestRuntime(t, []string{
+		"--account", account,
+		"--json",
+		"gmail", "track", "status",
+	}, runtime)
+	if statusResult.err != nil {
+		t.Fatalf("status: %v", statusResult.err)
+	}
+
+	ctx := withTestRuntime(newCmdRuntimeOutputContext(t, io.Discard, io.Discard), func(testRuntime *app.Runtime) {
+		testRuntime.Layout = layout
+		testRuntime.Auth = runtime.Auth
+	})
+	sendCmd := GmailSendCmd{BodyHTML: "<p>tracked</p>"}
+	cfg, err := sendCmd.resolveTrackingConfig(ctx, account, []string{"to@example.com"}, nil, nil, sendCmd.BodyHTML)
+	if err != nil {
+		t.Fatalf("resolveTrackingConfig: %v", err)
+	}
+	if cfg.TrackingKey != "inline-track" {
+		t.Fatalf("tracking config = %#v", cfg)
+	}
+	if opened {
+		t.Fatalf("inline config opened runtime secret store")
+	}
 }
 
 func TestGmailTrackSetupAndStatus(t *testing.T) {
@@ -381,9 +590,7 @@ func TestGmailTrackOpens(t *testing.T) {
 		TrackingKey: "trackkey",
 		AdminKey:    "adminkey",
 	}
-	if err := tracking.SaveConfig("a@b.com", cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveTrackingConfigForTest(t, cfg)
 
 	out := captureStdout(t, func() {
 		_ = captureStderr(t, func() {
@@ -461,9 +668,7 @@ func TestGmailTrackOpens_JSON(t *testing.T) {
 		TrackingKey: "trackkey",
 		AdminKey:    "adminkey",
 	}
-	if err := tracking.SaveConfig("a@b.com", cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveTrackingConfigForTest(t, cfg)
 
 	trackResult := executeWithTestRuntime(t, []string{"--json", "--account", "a@b.com", "gmail", "track", "opens", "tid"}, nil)
 	if trackResult.err != nil {
@@ -510,9 +715,7 @@ func TestGmailTrackOpens_AdminEmpty(t *testing.T) {
 		TrackingKey: "trackkey",
 		AdminKey:    "adminkey",
 	}
-	if err := tracking.SaveConfig("a@b.com", cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveTrackingConfigForTest(t, cfg)
 
 	out := captureStdout(t, func() {
 		_ = captureStderr(t, func() {
@@ -530,9 +733,7 @@ func TestGmailTrackOpens_NotConfigured(t *testing.T) {
 	setupTrackingEnv(t)
 
 	cfg := &tracking.Config{Enabled: false}
-	if err := tracking.SaveConfig("a@b.com", cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveTrackingConfigForTest(t, cfg)
 
 	if err := Execute([]string{"--account", "a@b.com", "gmail", "track", "opens"}); err == nil {
 		t.Fatalf("expected error for unconfigured tracking")

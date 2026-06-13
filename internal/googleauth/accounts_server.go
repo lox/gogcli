@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/steipete/gogcli/internal/authclient"
 	"github.com/steipete/gogcli/internal/config"
 	"github.com/steipete/gogcli/internal/secrets"
 )
@@ -39,12 +40,14 @@ type Identity struct {
 
 // ManageServerOptions configures the accounts management server
 type ManageServerOptions struct {
-	Timeout      time.Duration
-	Services     []Service
-	ForceConsent bool
-	Client       string
-	ListenAddr   string
-	RedirectURI  string
+	Timeout               time.Duration
+	Services              []Service
+	ForceConsent          bool
+	Client                string
+	ListenAddr            string
+	RedirectURI           string
+	UpdateEmailReferences EmailReferenceUpdater
+	ReadCredentials       func(client string) (config.ClientCredentials, error)
 }
 
 // ManageServer handles the accounts management UI
@@ -64,7 +67,7 @@ type ManageServer struct {
 }
 
 var (
-	openDefaultStore          = secrets.OpenDefault
+	openDefaultStore          func() (secrets.Store, error)
 	resolveKeyringBackendInfo = secrets.ResolveKeyringBackendInfo
 	ensureKeychainAccess      = secrets.EnsureKeychainAccess
 )
@@ -101,6 +104,7 @@ func StartManageServer(ctx context.Context, opts ManageServerOptions) error {
 	}
 
 	opts.Client = client
+	opts.ReadCredentials = manageCredentialsReader(ctx, opts.ReadCredentials)
 
 	listenAddr, err := normalizeListenAddr(opts.ListenAddr)
 	if err != nil {
@@ -119,7 +123,11 @@ func StartManageServer(ctx context.Context, opts ManageServerOptions) error {
 		opts.RedirectURI = resolvedRedirectURI
 	}
 
-	store, err := openDefaultStore()
+	if opts.UpdateEmailReferences == nil {
+		return errEmailReferenceUpdaterRequired
+	}
+
+	store, err := openManageSecretsStore(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to open secrets store: %w", err)
 	}
@@ -193,6 +201,19 @@ func StartManageServer(ctx context.Context, opts ManageServerOptions) error {
 		_ = ms.server.Close()
 		return nil
 	}
+}
+
+func openManageSecretsStore(ctx context.Context) (secrets.Store, error) {
+	if openDefaultStore != nil {
+		return openDefaultStore()
+	}
+
+	store, err := authclient.OpenSecretsStore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open accounts manager secrets store: %w", err)
+	}
+
+	return store, nil
 }
 
 func (ms *ManageServer) handleAccountsPage(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +296,7 @@ func (ms *ManageServer) handleAuthStart(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	creds, err := readClientCredentials(ms.client)
+	creds, err := ms.readCredentials()
 	if err != nil {
 		http.Error(w, "OAuth credentials not configured. Run: gog auth credentials <file>", http.StatusInternalServerError)
 		return
@@ -330,7 +351,7 @@ func (ms *ManageServer) handleAuthUpgrade(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	creds, err := readClientCredentials(ms.client)
+	creds, err := ms.readCredentials()
 	if err != nil {
 		http.Error(w, "OAuth credentials not configured. Run: gog auth credentials <file>", http.StatusInternalServerError)
 		return
@@ -408,7 +429,7 @@ func (ms *ManageServer) handleOAuthCallback(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	creds, err := readClientCredentials(ms.client)
+	creds, err := ms.readCredentials()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		renderErrorPage(w, "Failed to read credentials")
@@ -478,7 +499,7 @@ func (ms *ManageServer) handleOAuthCallback(w http.ResponseWriter, r *http.Reque
 	}
 
 	if needKeychain {
-		if keychainErr := ensureKeychainAccess(); keychainErr != nil { //nolint:contextcheck,nolintlint // keychain ops don't use context; nolint unused on non-Darwin
+		if keychainErr := ensureKeychainAccess(); keychainErr != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			renderErrorPage(w, "Keychain is locked: "+keychainErr.Error())
 
@@ -513,7 +534,7 @@ func (ms *ManageServer) handleOAuthCallback(w http.ResponseWriter, r *http.Reque
 	}
 
 	if migratedEmail != "" {
-		if err := MigrateStoredEmailReferences(ms.store, ms.client, migratedEmail, email); err != nil {
+		if err := MigrateStoredEmailReferences(ms.store, ms.opts.UpdateEmailReferences, ms.client, migratedEmail, email); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			renderErrorPage(w, "Failed to migrate stored token references: "+err.Error())
 

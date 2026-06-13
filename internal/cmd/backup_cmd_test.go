@@ -80,7 +80,7 @@ func TestBackupInitNoPushUsesLocalRepoWithoutDefaultRemote(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(repoPath, ".git")); statErr != nil {
 		t.Fatalf("local repo was not initialized: %v", statErr)
 	}
-	cfg, loadErr := backup.LoadConfig(configPath)
+	cfg, loadErr := backupOptionsForCmdTest(t, backup.Options{ConfigPath: configPath}).ConfigStore.Load(configPath)
 	if loadErr != nil {
 		t.Fatalf("LoadConfig: %v", loadErr)
 	}
@@ -105,7 +105,8 @@ func TestBackupInitNoPushPreservesConfiguredRemote(t *testing.T) {
 			if err := exec.CommandContext(t.Context(), "git", "-C", repoPath, "init").Run(); err != nil {
 				t.Fatalf("git init: %v", err)
 			}
-			if err := backup.SaveConfig(configPath, backup.Config{
+			store := backupOptionsForCmdTest(t, backup.Options{ConfigPath: configPath}).ConfigStore
+			if err := store.Save(configPath, backup.Config{
 				Repo:     repoPath,
 				Remote:   remote,
 				Identity: identityPath,
@@ -122,7 +123,7 @@ func TestBackupInitNoPushPreservesConfiguredRemote(t *testing.T) {
 			if err != nil {
 				t.Fatalf("BackupInitCmd.Run: %v", err)
 			}
-			cfg, loadErr := backup.LoadConfig(configPath)
+			cfg, loadErr := store.Load(configPath)
 			if loadErr != nil {
 				t.Fatalf("LoadConfig: %v", loadErr)
 			}
@@ -167,7 +168,7 @@ func TestBackupExportReportsManifestSemanticCounts(t *testing.T) {
 			"contacts.people":      99,
 		},
 		Shards: []backup.PlainShard{shard},
-	}, backup.Options{ConfigPath: config, Recipients: recipients, Push: false}); pushErr != nil {
+	}, backupOptionsForCmdTest(t, backup.Options{ConfigPath: config, Recipients: recipients, Push: false})); pushErr != nil {
 		t.Fatalf("PushSnapshot: %v", pushErr)
 	}
 
@@ -209,7 +210,7 @@ func TestBackupExportReportsManifestCountsForSemanticCollisions(t *testing.T) {
 			"drive.contents.errors":  1,
 		},
 		Shards: []backup.PlainShard{shard},
-	}, backup.Options{ConfigPath: config, Recipients: recipients, Push: false}); pushErr != nil {
+	}, backupOptionsForCmdTest(t, backup.Options{ConfigPath: config, Recipients: recipients, Push: false})); pushErr != nil {
 		t.Fatalf("PushSnapshot: %v", pushErr)
 	}
 

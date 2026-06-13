@@ -27,6 +27,7 @@ var (
 	ErrZoomRequestFailed         = errors.New("zoom request failed")
 	ErrZoomTokenRequestFailed    = errors.New("zoom token request failed")
 	ErrZoomTokenMissingAccessKey = errors.New("zoom token response missing access_token")
+	errZoomTokenStoreNil         = errors.New("zoom token store is nil")
 )
 
 type Credentials struct {
@@ -40,6 +41,7 @@ type Client struct {
 	alias       string
 	httpClient  *http.Client
 	now         func() time.Time
+	tokens      TokenStore
 }
 
 type Option func(*Client)
@@ -58,11 +60,14 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
-func NewClient(alias string, credentials Credentials, opts ...Option) (*Client, error) {
+func NewClient(alias string, credentials Credentials, tokens TokenStore, opts ...Option) (*Client, error) {
 	if strings.TrimSpace(credentials.AccountID) == "" ||
 		strings.TrimSpace(credentials.ClientID) == "" ||
 		strings.TrimSpace(credentials.ClientSecret) == "" {
 		return nil, ErrCredentialsNotFound
+	}
+	if tokens == nil {
+		return nil, errZoomTokenStoreNil
 	}
 	c := &Client{
 		credentials: Credentials{
@@ -73,6 +78,7 @@ func NewClient(alias string, credentials Credentials, opts ...Option) (*Client, 
 		alias:      NormalizeAlias(alias),
 		httpClient: http.DefaultClient,
 		now:        time.Now,
+		tokens:     tokens,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -227,7 +233,7 @@ func (c *Client) accessToken(ctx context.Context) (string, error) {
 	if expiresIn <= 0 {
 		expiresIn = 3600
 	}
-	_ = StoreCachedToken(c.alias, CachedToken{
+	_ = c.tokens.StoreCachedToken(c.alias, CachedToken{
 		AccessToken: decoded.AccessToken,
 		ExpiresAt:   c.now().UTC().Add(time.Duration(expiresIn) * time.Second),
 	})
@@ -235,7 +241,7 @@ func (c *Client) accessToken(ctx context.Context) (string, error) {
 }
 
 func (c *Client) cachedAccessToken() (string, bool) {
-	tok, err := LoadCachedToken(c.alias)
+	tok, err := c.tokens.LoadCachedToken(c.alias)
 	if err != nil {
 		return "", false
 	}

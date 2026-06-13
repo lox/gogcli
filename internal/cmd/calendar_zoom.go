@@ -16,12 +16,16 @@ import (
 	"github.com/steipete/gogcli/internal/zoom"
 )
 
-func newZoomMeetingClient(alias string) (app.ZoomMeetingClient, error) {
-	creds, err := zoom.LoadCredentials(alias)
+func newZoomMeetingClient(ctx context.Context, alias string) (app.ZoomMeetingClient, error) {
+	store, err := commandZoomStore(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return zoom.NewClient(alias, creds)
+	creds, err := store.LoadCredentials(alias)
+	if err != nil {
+		return nil, err
+	}
+	return zoom.NewClient(alias, creds, store)
 }
 
 func createZoomMeetingForEvent(ctx context.Context, event *calendar.Event) (*zoom.Meeting, error) {

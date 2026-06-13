@@ -68,11 +68,12 @@ type (
 	SlidesServiceFactory         func(context.Context, string) (*slides.Service, error)
 	TasksServiceFactory          func(context.Context, string) (*tasks.Service, error)
 	YouTubeServiceFactory        func(context.Context, string) (*youtube.Service, error)
-	ZoomMeetingClientFactory     func(string) (ZoomMeetingClient, error)
+	ZoomMeetingClientFactory     func(context.Context, string) (ZoomMeetingClient, error)
 	DriveDownloadFunc            func(context.Context, *drive.Service, string) (*http.Response, error)
 	DriveExportFunc              func(context.Context, *drive.Service, string, string) (*http.Response, error)
 	OpenURLFunc                  func(context.Context, string) error
 	OpenSecretsStoreFunc         func() (secrets.Store, error)
+	OpenSecretStoreFunc          func() (secrets.SecretStore, error)
 	AuthorizeGoogleFunc          func(context.Context, googleauth.AuthorizeOptions) (string, error)
 	StartManageServerFunc        func(context.Context, googleauth.ManageServerOptions) error
 	CheckRefreshTokenFunc        func(context.Context, string, string, []string, time.Duration) error
@@ -128,6 +129,7 @@ type Services struct {
 
 type AuthOperations struct {
 	OpenSecretsStore        OpenSecretsStoreFunc
+	OpenSecretStore         OpenSecretStoreFunc
 	AuthorizeGoogle         AuthorizeGoogleFunc
 	StartManageServer       StartManageServerFunc
 	CheckRefreshToken       CheckRefreshTokenFunc

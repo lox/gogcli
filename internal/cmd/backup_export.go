@@ -25,7 +25,11 @@ type BackupCatCmd struct {
 }
 
 func (c *BackupCatCmd) Run(ctx context.Context) error {
-	shard, err := backup.Cat(ctx, c.options(), c.Shard)
+	opts := c.options()
+	if err := bindBackupConfigStore(ctx, &opts); err != nil {
+		return err
+	}
+	shard, err := backup.Cat(ctx, opts, c.Shard)
 	if err != nil {
 		return err
 	}
@@ -71,6 +75,10 @@ type backupExportOptions struct {
 }
 
 func (c *BackupExportCmd) Run(ctx context.Context) error {
+	backupOpts := c.options()
+	if err := bindBackupConfigStore(ctx, &backupOpts); err != nil {
+		return err
+	}
 	outDir, err := expandUserPath(c.Out)
 	if err != nil {
 		return err
@@ -112,7 +120,7 @@ func (c *BackupExportCmd) Run(ctx context.Context) error {
 	}
 	var manifest backup.Manifest
 	var repo string
-	manifest, repo, err = backup.WalkSnapshot(ctx, c.options(), func(snapshot backup.Manifest, snapshotRepo string, shard backup.PlainShard) error {
+	manifest, repo, err = backup.WalkSnapshot(ctx, backupOpts, func(snapshot backup.Manifest, snapshotRepo string, shard backup.PlainShard) error {
 		if initErr := initExport(snapshot, snapshotRepo); initErr != nil {
 			return initErr
 		}

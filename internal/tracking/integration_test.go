@@ -6,6 +6,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/steipete/gogcli/internal/config"
+	"github.com/steipete/gogcli/internal/secrets"
 )
 
 func TestIntegrationEncryptDecryptWithWorker(t *testing.T) {
@@ -14,7 +17,30 @@ func TestIntegrationEncryptDecryptWithWorker(t *testing.T) {
 		t.Skip("set GOG_IT_ACCOUNT to run integration test")
 	}
 
-	cfg, err := LoadConfig(account)
+	layout, err := config.ResolveSystemLayoutFor("", config.PathKindConfig, config.PathKindState)
+	if err != nil {
+		t.Skipf("Tracking layout unavailable: %v", err)
+	}
+	legacyConfigBase := ""
+	if !layout.ExplicitState {
+		legacyConfigBase, err = config.ResolveUserConfigBase()
+		if err != nil {
+			t.Skipf("Legacy tracking path unavailable: %v", err)
+		}
+	}
+	secretRepository, err := secrets.OpenWithConfig(layout, config.NewConfigStore(layout))
+	if err != nil {
+		t.Skipf("Tracking secrets unavailable: %v", err)
+	}
+	secretStore, err := NewSecretStore(secretRepository)
+	if err != nil {
+		t.Skipf("Tracking secret store unavailable: %v", err)
+	}
+	store, err := NewConfigStore(layout, legacyConfigBase, secretStore)
+	if err != nil {
+		t.Skipf("Tracking store unavailable: %v", err)
+	}
+	cfg, err := store.Load(account)
 	if err != nil || !cfg.IsConfigured() {
 		t.Skip("Tracking not configured, skipping integration test")
 	}

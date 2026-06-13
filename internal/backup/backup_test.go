@@ -26,7 +26,7 @@ func TestPushSnapshotAndVerify(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err != nil {
 		t.Fatalf("PushSnapshot: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestPushSnapshotAndVerify(t *testing.T) {
 		t.Fatal("encrypted shard contains plaintext")
 	}
 
-	verify, err := Verify(ctx, Options{ConfigPath: config})
+	verify, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestPushSnapshotAndVerify(t *testing.T) {
 		t.Fatalf("unexpected verify result: %+v", verify)
 	}
 
-	status, statusRepo, err := Status(ctx, Options{ConfigPath: config})
+	status, statusRepo, err := Status(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -78,11 +78,11 @@ func TestVerifyReportsManifestSemanticCounts(t *testing.T) {
 			"contacts.people":      99,
 		},
 		Shards: []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false}); pushErr != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); pushErr != nil {
 		t.Fatalf("PushSnapshot: %v", pushErr)
 	}
 
-	verify, err := Verify(ctx, Options{ConfigPath: config})
+	verify, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -111,11 +111,11 @@ func TestVerifyReportsManifestCountsForSemanticCollisions(t *testing.T) {
 			"drive.contents.errors":  1,
 		},
 		Shards: []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false}); pushErr != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); pushErr != nil {
 		t.Fatalf("PushSnapshot: %v", pushErr)
 	}
 
-	verify, err := Verify(ctx, Options{ConfigPath: config})
+	verify, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -172,13 +172,13 @@ func TestPushSnapshotEncryptsAndCleansPlaintextPath(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushSnapshot: %v", err)
 	}
 	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
 		t.Fatalf("plaintext temp file still exists or stat failed: %v", err)
 	}
-	verify, err := Verify(ctx, Options{ConfigPath: config})
+	verify, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestPushCheckpointWritesIncompleteManifestOutsideMainSnapshot(t *testing.T)
 		Total:     2,
 		Fetched:   1,
 		CacheHits: 0,
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err != nil {
 		t.Fatalf("PushCheckpoint: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestPushSnapshotCanReferenceExistingCheckpointShard(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{checkpointShard},
-	}, Checkpoint{RunID: "run-one", Service: "gmail", Account: "acct", Done: 1, Total: 1}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, Checkpoint{RunID: "run-one", Service: "gmail", Account: "acct", Done: 1, Total: 1}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushCheckpoint: %v", err)
 	}
 	checkpointManifest, err := readCheckpointManifest(repo, "checkpoints/gmail/acct/run-one/manifest.json")
@@ -258,7 +258,7 @@ func TestPushSnapshotCanReferenceExistingCheckpointShard(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{ExistingShard(checkpointManifest.Shards[0], checkpointManifest.Recipients)},
-	}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushSnapshot existing checkpoint shard: %v", err)
 	}
 
@@ -266,10 +266,10 @@ func TestPushSnapshotCanReferenceExistingCheckpointShard(t *testing.T) {
 	if len(manifest.Shards) != 1 || manifest.Shards[0].Path != checkpointManifest.Shards[0].Path {
 		t.Fatalf("root manifest did not reference checkpoint shard: %+v", manifest.Shards)
 	}
-	if _, err := Verify(ctx, Options{ConfigPath: config}); err != nil {
+	if _, err := Verify(ctx, testOptions(t, Options{ConfigPath: config})); err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if _, err := Cat(ctx, Options{ConfigPath: config}, checkpointManifest.Shards[0].Path); err != nil {
+	if _, err := Cat(ctx, testOptions(t, Options{ConfigPath: config}), checkpointManifest.Shards[0].Path); err != nil {
 		t.Fatalf("Cat checkpoint shard from root manifest: %v", err)
 	}
 }
@@ -288,9 +288,7 @@ func TestAsyncCheckpointPushDrainsBeforeFinalSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
-	if saveErr := SaveConfig(config, Config{Repo: repo, Remote: remote, Identity: identity, Recipients: []string{recipient}}); saveErr != nil {
-		t.Fatalf("SaveConfig: %v", saveErr)
-	}
+	saveTestConfig(t, config, Config{Repo: repo, Remote: remote, Identity: identity, Recipients: []string{recipient}})
 	var progressMu sync.Mutex
 	var progress []string
 	progressf := func(format string, args ...any) {
@@ -304,7 +302,7 @@ func TestAsyncCheckpointPushDrainsBeforeFinalSnapshot(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{checkpointShard},
-	}, Checkpoint{RunID: "run-one", Service: "gmail", Account: "acct", Done: 1, Total: 2}, Options{ConfigPath: config, Push: true, AsyncPush: true, Progress: progressf}); pushErr != nil {
+	}, Checkpoint{RunID: "run-one", Service: "gmail", Account: "acct", Done: 1, Total: 2}, testOptions(t, Options{ConfigPath: config, Push: true, AsyncPush: true, Progress: progressf})); pushErr != nil {
 		t.Fatalf("PushCheckpoint: %v", pushErr)
 	}
 	finalShard := mustGmailMessageShard(t, "data/gmail/acct/messages/2026/04/part-0001.jsonl.gz.age", []map[string]string{{"id": "m1"}})
@@ -313,7 +311,7 @@ func TestAsyncCheckpointPushDrainsBeforeFinalSnapshot(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{finalShard},
-	}, Options{ConfigPath: config, Push: true, Progress: progressf}); pushErr != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: true, Progress: progressf})); pushErr != nil {
 		t.Fatalf("PushSnapshot: %v", pushErr)
 	}
 	local, err := gitOutput(ctx, repo, "rev-parse", "HEAD")
@@ -362,7 +360,7 @@ func TestCatAndDecryptSnapshotVerifyPlaintext(t *testing.T) {
 		"raw": "plain marker",
 	}}))
 
-	cat, err := Cat(ctx, Options{ConfigPath: config}, shardPath)
+	cat, err := Cat(ctx, testOptions(t, Options{ConfigPath: config}), shardPath)
 	if err != nil {
 		t.Fatalf("Cat: %v", err)
 	}
@@ -371,7 +369,7 @@ func TestCatAndDecryptSnapshotVerifyPlaintext(t *testing.T) {
 	}
 
 	absPath := filepath.Join(repo, filepath.FromSlash(shardPath))
-	catAbs, err := Cat(ctx, Options{ConfigPath: config}, absPath)
+	catAbs, err := Cat(ctx, testOptions(t, Options{ConfigPath: config}), absPath)
 	if err != nil {
 		t.Fatalf("Cat absolute: %v", err)
 	}
@@ -379,7 +377,7 @@ func TestCatAndDecryptSnapshotVerifyPlaintext(t *testing.T) {
 		t.Fatalf("absolute Cat plaintext mismatch")
 	}
 
-	manifest, gotRepo, shards, err := DecryptSnapshot(ctx, Options{ConfigPath: config})
+	manifest, gotRepo, shards, err := DecryptSnapshot(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err != nil {
 		t.Fatalf("DecryptSnapshot: %v", err)
 	}
@@ -394,7 +392,7 @@ func TestCatRejectsShardOutsideManifest(t *testing.T) {
 
 	for _, ref := range []string{"../data/gmail/acct/messages/2026/04/part-0001.jsonl.gz.age", "data/gmail/acct/messages/2026/05/part-0001.jsonl.gz.age"} {
 		t.Run(ref, func(t *testing.T) {
-			if _, err := Cat(ctx, Options{ConfigPath: config}, ref); err == nil {
+			if _, err := Cat(ctx, testOptions(t, Options{ConfigPath: config}), ref); err == nil {
 				t.Fatal("expected Cat to reject missing or escaping shard")
 			}
 		})
@@ -437,7 +435,7 @@ func TestManifestDoesNotContainPayloadPlaintext(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushSnapshot: %v", err)
 	}
 
@@ -470,7 +468,7 @@ func TestVerifyDetectsTamperedCiphertext(t *testing.T) {
 		t.Fatalf("write tampered ciphertext: %v", err)
 	}
 
-	if _, err := Verify(ctx, Options{ConfigPath: config}); err == nil {
+	if _, err := Verify(ctx, testOptions(t, Options{ConfigPath: config})); err == nil {
 		t.Fatal("expected verify to reject tampered ciphertext")
 	}
 }
@@ -484,7 +482,7 @@ func TestVerifyDetectsManifestHashMismatch(t *testing.T) {
 	writeTestManifest(t, repo, manifest)
 	commitTestRepo(t, ctx, repo, "test: tamper manifest hash")
 
-	_, err := Verify(ctx, Options{ConfigPath: config})
+	_, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err == nil || !strings.Contains(err.Error(), "hash mismatch") {
 		t.Fatalf("Verify error = %v, want hash mismatch", err)
 	}
@@ -499,7 +497,7 @@ func TestVerifyDetectsManifestRowCountMismatch(t *testing.T) {
 	writeTestManifest(t, repo, manifest)
 	commitTestRepo(t, ctx, repo, "test: tamper manifest rows")
 
-	_, err := Verify(ctx, Options{ConfigPath: config})
+	_, err := Verify(ctx, testOptions(t, Options{ConfigPath: config}))
 	if err == nil || !strings.Contains(err.Error(), "row count mismatch") {
 		t.Fatalf("Verify error = %v, want row count mismatch", err)
 	}
@@ -559,14 +557,14 @@ func TestPushReencryptsShardWhenRecipientChanges(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Identity: secondIdentity, Recipients: []string{secondRecipient}, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Identity: secondIdentity, Recipients: []string{secondRecipient}, Push: false})); err != nil {
 		t.Fatalf("PushSnapshot second recipient: %v", err)
 	}
 	secondCiphertext := readFile(t, filepath.Join(repo, filepath.FromSlash(shardPath)))
 	if string(firstCiphertext) == string(secondCiphertext) {
 		t.Fatal("ciphertext did not change after recipient rotation")
 	}
-	if _, err := Verify(ctx, Options{ConfigPath: config, Identity: secondIdentity}); err != nil {
+	if _, err := Verify(ctx, testOptions(t, Options{ConfigPath: config, Identity: secondIdentity})); err != nil {
 		t.Fatalf("Verify with rotated identity: %v", err)
 	}
 }
@@ -583,7 +581,7 @@ func TestPushRemovesStaleEncryptedShards(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 2},
 		Shards:   []PlainShard{oldShard, keepShard},
-	}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("initial PushSnapshot: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(oldPath))); err != nil {
@@ -614,7 +612,7 @@ func TestPushPreservesUntouchedServices(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"calendar.events": 1},
 		Shards:   []PlainShard{calendarShard},
-	}, Options{ConfigPath: config, Push: false}); err != nil {
+	}, testOptions(t, Options{ConfigPath: config, Push: false})); err != nil {
 		t.Fatalf("PushSnapshot calendar: %v", err)
 	}
 
@@ -655,7 +653,7 @@ func TestPushSnapshotRejectsCorruptManifestWithoutPruning(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"calendar.events": 1},
 		Shards:   []PlainShard{calendarShard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err == nil {
 		t.Fatal("expected corrupt manifest error")
 	}
@@ -687,7 +685,7 @@ func TestPushSnapshotRejectsUnsupportedManifestWithoutPruning(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"calendar.events": 1},
 		Shards:   []PlainShard{calendarShard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err == nil {
 		t.Fatal("expected unsupported manifest error")
 	}
@@ -731,7 +729,7 @@ func TestPushSnapshotRejectsSymlinkManifestBeforeMutatingShards(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"calendar.events": 1},
 		Shards:   []PlainShard{calendarShard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err == nil {
 		t.Fatal("expected symlink manifest error")
 	}
@@ -754,10 +752,10 @@ func TestRejectsInvalidShardPaths(t *testing.T) {
 	} {
 		t.Run(rel, func(t *testing.T) {
 			shard := mustGmailMessageShard(t, rel, []map[string]string{{"id": "m1"}})
-			_, err := PushSnapshot(context.Background(), Snapshot{Shards: []PlainShard{shard}}, Options{
+			_, err := PushSnapshot(context.Background(), Snapshot{Shards: []PlainShard{shard}}, testOptions(t, Options{
 				ConfigPath: config,
 				Push:       false,
-			})
+			}))
 			if err == nil {
 				t.Fatal("expected invalid shard path error")
 			}
@@ -780,10 +778,10 @@ func TestRejectsSymlinkedShardPath(t *testing.T) {
 
 	rel := "data/gmail/acct/messages/part-0001.jsonl.gz.age"
 	shard := mustGmailMessageShard(t, rel, []map[string]string{{"id": "m1", "raw": "body"}})
-	_, err := PushSnapshot(ctx, Snapshot{Shards: []PlainShard{shard}}, Options{
+	_, err := PushSnapshot(ctx, Snapshot{Shards: []PlainShard{shard}}, testOptions(t, Options{
 		ConfigPath: config,
 		Push:       false,
-	})
+	}))
 	if err == nil {
 		t.Fatal("expected symlink path error")
 	}
@@ -818,7 +816,7 @@ func TestRejectsSymlinkedShardPathOnReuse(t *testing.T) {
 		Accounts: []string{"acct"},
 		Counts:   map[string]int{"gmail.messages": 1},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err == nil {
 		t.Fatal("expected symlink reuse error")
 	}
@@ -924,9 +922,7 @@ func initTestBackup(t *testing.T) (context.Context, string, string, string) {
 		Identity:   identity,
 		Recipients: []string{recipient},
 	}
-	if err := SaveConfig(config, cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
+	saveTestConfig(t, config, cfg)
 	if err := ensureRepo(ctx, cfg); err != nil {
 		t.Fatalf("ensureRepo: %v", err)
 	}
@@ -958,7 +954,7 @@ func pushSingleShard(t *testing.T, ctx context.Context, config string, shard Pla
 		Accounts: []string{shard.Account},
 		Counts:   map[string]int{shard.Service + "." + shard.Kind: shard.Rows},
 		Shards:   []PlainShard{shard},
-	}, Options{ConfigPath: config, Push: false})
+	}, testOptions(t, Options{ConfigPath: config, Push: false}))
 	if err != nil {
 		t.Fatalf("PushSnapshot: %v", err)
 	}
