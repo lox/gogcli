@@ -14,6 +14,7 @@
 - CLI: classify malformed OAuth token imports as usage errors and missing Gmail tracking setup as configuration errors.
 - CLI: classify invalid Docs batch IDs and incomplete Gmail filter definitions as usage errors with exit code 2.
 - Docs: keep batch list/show, batch target validation, and batch end dry-runs read-only without creating state directories or lock files.
+- Docs: persist successful split and individual batch submissions before reporting a missing response revision, preventing retries from submitting already-applied requests again.
 - Gmail: make `watch status` read atomic watch state without creating state directories or lock files.
 - Gmail: make `watch serve --dry-run` return a secret-free daemon plan without creating/locking/updating watch state, saving hook settings, creating clients, or opening a socket.
 - Backup: make status, verify, cat, and export use read-only repository setup and file-free dry-run plans, support pre-created empty repository directories, keep failed clones clean, disable Git credential prompts under `--no-input`, redact credentials from Git errors, preserve clone failures instead of initializing a new repository, and give status/verify the existing `--no-pull` flags while retaining hidden compatibility for legacy write-only options.
