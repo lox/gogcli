@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
-	"strings"
 	"testing"
 
 	"google.golang.org/api/docs/v1"
@@ -16,30 +14,21 @@ func TestDocsFindRangeCmdJSONAllAndTab(t *testing.T) {
 	t.Parallel()
 
 	var includeTabs string
-	docSvc, cleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		includeTabs = r.URL.Query().Get("includeTabsContent")
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(&docs.Document{
-			DocumentId: "doc1",
-			Tabs: []*docs.Tab{
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
-					DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "nope\n")).Body},
-				},
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
-					DocumentTab: &docs.DocumentTab{Body: docsFindRangeDoc(
-						docsFindRangeParagraph(1, "Alpha Beta Alpha\n"),
-					).Body},
-				},
+	docSvc := newDocsDocumentTestService(t, &docs.Document{
+		DocumentId: "doc1",
+		Tabs: []*docs.Tab{
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
+				DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "nope\n")).Body},
 			},
-		})
-	}))
-	defer cleanup()
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
+				DocumentTab: &docs.DocumentTab{Body: docsFindRangeDoc(
+					docsFindRangeParagraph(1, "Alpha Beta Alpha\n"),
+				).Body},
+			},
+		},
+	}, &includeTabs)
 
 	var output bytes.Buffer
 	ctx := withDocsTestService(newCmdRuntimeJSONOutputContext(t, &output, io.Discard), docSvc)
@@ -69,15 +58,7 @@ func TestDocsFindRangeCmdJSONAllAndTab(t *testing.T) {
 func TestDocsFindRangeCmdPlainOccurrence(t *testing.T) {
 	t.Parallel()
 
-	docSvc, cleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(docsFindRangeDoc(docsFindRangeParagraph(1, "Alpha Beta Alpha\n")))
-	}))
-	defer cleanup()
+	docSvc := newDocsDocumentTestService(t, docsFindRangeDoc(docsFindRangeParagraph(1, "Alpha Beta Alpha\n")), nil)
 
 	var out bytes.Buffer
 	ctx := withDocsTestService(newCmdRuntimeOutputContext(t, &out, io.Discard), docSvc)
@@ -92,15 +73,7 @@ func TestDocsFindRangeCmdPlainOccurrence(t *testing.T) {
 func TestDocsFindRangeCmdEmptyAndFailEmpty(t *testing.T) {
 	t.Parallel()
 
-	docSvc, cleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(docsFindRangeDoc(docsFindRangeParagraph(1, "Alpha\n")))
-	}))
-	defer cleanup()
+	docSvc := newDocsDocumentTestService(t, docsFindRangeDoc(docsFindRangeParagraph(1, "Alpha\n")), nil)
 
 	var output bytes.Buffer
 	ctx := withDocsTestService(newCmdRuntimeJSONOutputContext(t, &output, io.Discard), docSvc)

@@ -16,48 +16,45 @@ import (
 	"google.golang.org/api/option"
 )
 
-func TestDocsCommentsLocateJSONTabEntitiesAndWhitespace(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func newDocsCommentTestService(t *testing.T, content, quote string) *drive.Service {
+	t.Helper()
+	response := map[string]any{"id": "c1"}
+	if content != "" {
+		response["content"] = content
+	}
+	if quote != "" {
+		response["quotedFileContent"] = map[string]any{"value": quote}
+	}
+	svc, _ := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":      "c1",
-			"content": "please check",
-			"quotedFileContent": map[string]any{
-				"value": "Tom &amp; Jerry next",
-			},
-		})
+		_ = json.NewEncoder(w).Encode(response)
 	}))
-	defer driveCleanup()
+	return svc
+}
+
+func TestDocsCommentsLocateJSONTabEntitiesAndWhitespace(t *testing.T) {
+	driveSvc := newDocsCommentTestService(t, "please check", "Tom &amp; Jerry next")
 
 	var includeTabs string
-	docSvc, docsCleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		includeTabs = r.URL.Query().Get("includeTabsContent")
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(&docs.Document{
-			DocumentId: "doc1",
-			Tabs: []*docs.Tab{
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
-					DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "not here\n")).Body},
-				},
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
-					DocumentTab: &docs.DocumentTab{Body: docsFindRangeDoc(
-						docsFindRangeParagraph(1, "Tom\t  & Jerry\nnext\n"),
-					).Body},
-				},
+	docSvc := newDocsDocumentTestService(t, &docs.Document{
+		DocumentId: "doc1",
+		Tabs: []*docs.Tab{
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
+				DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "not here\n")).Body},
 			},
-		})
-	}))
-	defer docsCleanup()
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
+				DocumentTab: &docs.DocumentTab{Body: docsFindRangeDoc(
+					docsFindRangeParagraph(1, "Tom\t  & Jerry\nnext\n"),
+				).Body},
+			},
+		},
+	}, &includeTabs)
 
 	execResult := runDocsCommentsLocateJSON(t, driveSvc, docSvc, "doc1", "c1", "--tab", "Second")
 	if execResult.err != nil {
@@ -83,72 +80,17 @@ func TestDocsCommentsLocateJSONTabEntitiesAndWhitespace(t *testing.T) {
 }
 
 func TestDocsCommentsLocatePreservesLiteralEntities(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": "c1",
-			"quotedFileContent": map[string]any{
-				"value": "literal &amp; marker",
-			},
-		})
-	}))
-	defer driveCleanup()
-
-	docSvc, docsCleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(docsFindRangeDoc(docsFindRangeParagraph(1, "literal &amp; marker\n")))
-	}))
-	defer docsCleanup()
-
-	execResult := runDocsCommentsLocateJSON(t, driveSvc, docSvc, "doc1", "c1")
-	if execResult.err != nil {
-		t.Fatalf("locate: %v", execResult.err)
-	}
-	var result docsCommentLocateResult
-	if err := json.Unmarshal([]byte(execResult.stdout), &result); err != nil {
-		t.Fatalf("json: %v\n%s", err, execResult.stdout)
-	}
-	if result.Orphaned || result.Quote != "literal &amp; marker" || len(result.Matches) != 1 {
-		t.Fatalf("result = %#v", result)
-	}
-	if got := result.Matches[0]; got.StartIndex != 1 || got.EndIndex != 21 {
-		t.Fatalf("match = %#v, want raw entity range 1..21", got)
-	}
+	assertDocsCommentsLocateEntity(t, "literal &amp; marker")
 }
 
 func TestDocsCommentsLocateFallbackDecodesEntitiesOnce(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": "c1",
-			"quotedFileContent": map[string]any{
-				"value": "literal &amp;amp; marker",
-			},
-		})
-	}))
-	defer driveCleanup()
+	assertDocsCommentsLocateEntity(t, "literal &amp;amp; marker")
+}
 
-	docSvc, docsCleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(docsFindRangeDoc(docsFindRangeParagraph(1, "literal &amp; marker\n")))
-	}))
-	defer docsCleanup()
+func assertDocsCommentsLocateEntity(t *testing.T, quote string) {
+	t.Helper()
+	driveSvc := newDocsCommentTestService(t, "", quote)
+	docSvc := newDocsDocumentTestService(t, docsFindRangeDoc(docsFindRangeParagraph(1, "literal &amp; marker\n")), nil)
 
 	execResult := runDocsCommentsLocateJSON(t, driveSvc, docSvc, "doc1", "c1")
 	if execResult.err != nil {
@@ -158,7 +100,7 @@ func TestDocsCommentsLocateFallbackDecodesEntitiesOnce(t *testing.T) {
 	if err := json.Unmarshal([]byte(execResult.stdout), &result); err != nil {
 		t.Fatalf("json: %v\n%s", err, execResult.stdout)
 	}
-	if result.Orphaned || result.Quote != "literal &amp;amp; marker" || len(result.Matches) != 1 {
+	if result.Orphaned || result.Quote != quote || len(result.Matches) != 1 {
 		t.Fatalf("result = %#v", result)
 	}
 	if got := result.Matches[0]; got.StartIndex != 1 || got.EndIndex != 21 {
@@ -167,44 +109,22 @@ func TestDocsCommentsLocateFallbackDecodesEntitiesOnce(t *testing.T) {
 }
 
 func TestDocsCommentsLocateDefaultSearchesAllTabs(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": "c1",
-			"quotedFileContent": map[string]any{
-				"value": "second tab quote",
-			},
-		})
-	}))
-	defer driveCleanup()
+	driveSvc := newDocsCommentTestService(t, "", "second tab quote")
 
 	var includeTabs string
-	docSvc, docsCleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		includeTabs = r.URL.Query().Get("includeTabsContent")
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(&docs.Document{
-			DocumentId: "doc1",
-			Tabs: []*docs.Tab{
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
-					DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "first tab only\n")).Body},
-				},
-				{
-					TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
-					DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "second tab quote\n")).Body},
-				},
+	docSvc := newDocsDocumentTestService(t, &docs.Document{
+		DocumentId: "doc1",
+		Tabs: []*docs.Tab{
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.first", Title: "First"},
+				DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "first tab only\n")).Body},
 			},
-		})
-	}))
-	defer docsCleanup()
+			{
+				TabProperties: &docs.TabProperties{TabId: "t.second", Title: "Second"},
+				DocumentTab:   &docs.DocumentTab{Body: docsFindRangeDoc(docsFindRangeParagraph(1, "second tab quote\n")).Body},
+			},
+		},
+	}, &includeTabs)
 
 	execResult := runDocsCommentsLocateJSON(t, driveSvc, docSvc, "doc1", "c1")
 	if execResult.err != nil {
@@ -224,30 +144,8 @@ func TestDocsCommentsLocateDefaultSearchesAllTabs(t *testing.T) {
 }
 
 func TestDocsCommentsLocatePlainOrphanedExit(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": "c1",
-			"quotedFileContent": map[string]any{
-				"value": "missing quote",
-			},
-		})
-	}))
-	defer driveCleanup()
-
-	docSvc, docsCleanup := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(docsFindRangeDoc(docsFindRangeParagraph(1, "present text\n")))
-	}))
-	defer docsCleanup()
+	driveSvc := newDocsCommentTestService(t, "", "missing quote")
+	docSvc := newDocsDocumentTestService(t, docsFindRangeDoc(docsFindRangeParagraph(1, "present text\n")), nil)
 
 	var out bytes.Buffer
 	ctx := withDocsTestService(
@@ -265,15 +163,7 @@ func TestDocsCommentsLocatePlainOrphanedExit(t *testing.T) {
 }
 
 func TestDocsCommentsLocateJSONNoQuote(t *testing.T) {
-	driveSvc, driveCleanup := newDriveCommentsTestService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/drive/v3") != "/files/doc1/comments/c1" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "c1", "content": "unanchored"})
-	}))
-	defer driveCleanup()
+	driveSvc := newDocsCommentTestService(t, "unanchored", "")
 
 	execResult := runDocsCommentsLocateJSON(t, driveSvc, nil, "doc1", "c1")
 	if execResult.err != nil {

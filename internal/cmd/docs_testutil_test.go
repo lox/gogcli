@@ -50,6 +50,22 @@ func newDocsBatchUpdateTestService(t *testing.T, document any) (*docs.Service, *
 	return svc, capture
 }
 
+func newDocsDocumentTestService(t *testing.T, document any, includeTabs *string) *docs.Service {
+	t.Helper()
+	svc, _ := newDocsServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/v1/documents/") {
+			http.NotFound(w, r)
+			return
+		}
+		if includeTabs != nil {
+			*includeTabs = r.URL.Query().Get("includeTabsContent")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(document)
+	}))
+	return svc
+}
+
 func newDocsServiceForTest(t *testing.T, h http.HandlerFunc) (*docs.Service, func()) {
 	t.Helper()
 
