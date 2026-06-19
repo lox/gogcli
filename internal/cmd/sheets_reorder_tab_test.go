@@ -46,219 +46,120 @@ func newSheetsCmdContext(t *testing.T, svc *sheets.Service) context.Context {
 	return withSheetsTestService(newCmdRuntimeOutputContext(t, io.Discard, io.Discard), svc)
 }
 
-func TestSheetsReorderTabCmd_ResolvesByName(t *testing.T) {
-	var captured sheets.BatchUpdateSpreadsheetRequest
-	svc, cleanup := newSheetsTestServer(t, &captured, []map[string]any{
-		{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
-		{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
-		{"properties": map[string]any{"sheetId": 33, "title": "Third", "index": 2}},
-	})
-	defer cleanup()
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "Third", "--to", "0"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
+func TestSheetsReorderTabCmd_ResolutionAndIndex(t *testing.T) {
+	tests := []struct {
+		name      string
+		catalog   []map[string]any
+		tab       string
+		to        string
+		wantID    int64
+		wantIndex int64
+	}{
+		{
+			name: "resolves by name", tab: "Third", to: "0", wantID: 33, wantIndex: 0,
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
+				{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
+				{"properties": map[string]any{"sheetId": 33, "title": "Third", "index": 2}},
+			},
+		},
+		{
+			name: "accepts numeric sheet ID", tab: "99", to: "2", wantID: 99, wantIndex: 3,
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 99, "title": "Only", "index": 0}},
+				{"properties": map[string]any{"sheetId": 100, "title": "Next", "index": 1}},
+				{"properties": map[string]any{"sheetId": 101, "title": "Last", "index": 2}},
+			},
+		},
+		{
+			name: "adjusts rightward API index", tab: "First", to: "1", wantID: 11, wantIndex: 2,
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
+				{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
+				{"properties": map[string]any{"sheetId": 33, "title": "Third", "index": 2}},
+			},
+		},
+		{
+			name: "prefers numeric title", tab: "2024", to: "2", wantID: 11, wantIndex: 3,
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 11, "title": "2024", "index": 0}},
+				{"properties": map[string]any{"sheetId": 2024, "title": "Other", "index": 1}},
+				{"properties": map[string]any{"sheetId": 33, "title": "Last", "index": 2}},
+			},
+		},
 	}
-
-	if len(captured.Requests) != 1 {
-		t.Fatalf("expected 1 batchUpdate request, got %d", len(captured.Requests))
-	}
-	req := captured.Requests[0].UpdateSheetProperties
-	if req == nil {
-		t.Fatalf("expected UpdateSheetProperties, got %#v", captured.Requests[0])
-	}
-	if req.Properties == nil || req.Properties.SheetId != 33 {
-		t.Fatalf("expected sheetId=33 (resolved from \"Third\"), got %#v", req.Properties)
-	}
-	if req.Properties.Index != 0 {
-		t.Fatalf("expected target index 0, got %d", req.Properties.Index)
-	}
-	if req.Fields != "index" {
-		t.Fatalf("expected Fields=\"index\", got %q", req.Fields)
-	}
-}
-
-func TestSheetsReorderTabCmd_AcceptsNumericSheetID(t *testing.T) {
-	var captured sheets.BatchUpdateSpreadsheetRequest
-	svc, cleanup := newSheetsTestServer(t, &captured, []map[string]any{
-		{"properties": map[string]any{"sheetId": 99, "title": "Only", "index": 0}},
-		{"properties": map[string]any{"sheetId": 100, "title": "Next", "index": 1}},
-		{"properties": map[string]any{"sheetId": 101, "title": "Last", "index": 2}},
-	})
-	defer cleanup()
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "99", "--to", "2"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
-	}
-
-	req := captured.Requests[0].UpdateSheetProperties
-	if req == nil || req.Properties == nil {
-		t.Fatalf("expected UpdateSheetProperties, got %#v", captured.Requests[0])
-	}
-	if req.Properties.SheetId != 99 {
-		t.Fatalf("expected numeric sheetId passed through, got %d", req.Properties.SheetId)
-	}
-	if req.Properties.Index != 3 {
-		t.Fatalf("expected rightward move to send API index 3, got %d", req.Properties.Index)
-	}
-}
-
-func TestSheetsReorderTabCmd_RightwardMoveAdjustsAPIIndex(t *testing.T) {
-	var captured sheets.BatchUpdateSpreadsheetRequest
-	svc, cleanup := newSheetsTestServer(t, &captured, []map[string]any{
-		{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
-		{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
-		{"properties": map[string]any{"sheetId": 33, "title": "Third", "index": 2}},
-	})
-	defer cleanup()
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "First", "--to", "1"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
-	}
-
-	req := captured.Requests[0].UpdateSheetProperties
-	if req == nil || req.Properties == nil {
-		t.Fatalf("expected UpdateSheetProperties, got %#v", captured.Requests[0])
-	}
-	if req.Properties.SheetId != 11 {
-		t.Fatalf("expected sheetId=11, got %d", req.Properties.SheetId)
-	}
-	if req.Properties.Index != 2 {
-		t.Fatalf("expected rightward move to final index 1 to send API index 2, got %d", req.Properties.Index)
-	}
-}
-
-func TestSheetsReorderTabCmd_PrefersNumericTitleBeforeSheetID(t *testing.T) {
-	var captured sheets.BatchUpdateSpreadsheetRequest
-	svc, cleanup := newSheetsTestServer(t, &captured, []map[string]any{
-		{"properties": map[string]any{"sheetId": 11, "title": "2024", "index": 0}},
-		{"properties": map[string]any{"sheetId": 2024, "title": "Other", "index": 1}},
-		{"properties": map[string]any{"sheetId": 33, "title": "Last", "index": 2}},
-	})
-	defer cleanup()
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "2024", "--to", "2"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
-	}
-
-	req := captured.Requests[0].UpdateSheetProperties
-	if req == nil || req.Properties == nil {
-		t.Fatalf("expected UpdateSheetProperties, got %#v", captured.Requests[0])
-	}
-	if req.Properties.SheetId != 11 {
-		t.Fatalf("expected numeric-looking title to resolve before sheetId, got sheetId %d", req.Properties.SheetId)
-	}
-	if req.Properties.Index != 3 {
-		t.Fatalf("expected rightward move to send API index 3, got %d", req.Properties.Index)
-	}
-}
-
-func TestSheetsReorderTabCmd_IndexZeroIsSerialized(t *testing.T) {
-	// Index=0 is the leftmost position and is also Go's zero value for int64.
-	// Without ForceSendFields the JSON wire format would omit it and the API
-	// would treat the call as a no-op move-to-current-position. We can't see
-	// ForceSendFields after a round-trip decode, so we capture the raw request
-	// body and assert "index":0 appears in the JSON.
-	var rawBody []byte
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/sheets/v4")
-		path = strings.TrimPrefix(path, "/v4")
-		switch {
-		case strings.HasPrefix(path, "/spreadsheets/s1") && !strings.Contains(path, ":batchUpdate") && r.Method == http.MethodGet:
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"spreadsheetId": "s1",
-				"sheets": []map[string]any{
-					{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
-					{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
-				},
-			})
-		case strings.Contains(path, "/spreadsheets/s1:batchUpdate") && r.Method == http.MethodPost:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Fatalf("read body: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured sheets.BatchUpdateSpreadsheetRequest
+			svc, cleanup := newSheetsTestServer(t, &captured, tc.catalog)
+			defer cleanup()
+			if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", tc.tab, "--to", tc.to}, newSheetsCmdContext(t, svc), &RootFlags{Account: "a@b.com"}); err != nil {
+				t.Fatalf("reorder-tab: %v", err)
 			}
-			rawBody = body
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	svc := newSheetsServiceFromServer(t, srv)
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "Second", "--to", "0"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
-	}
-
-	if !strings.Contains(string(rawBody), `"index":0`) {
-		t.Fatalf("expected raw body to contain \"index\":0 (ForceSendFields was not effective); body = %s", rawBody)
-	}
-	if !strings.Contains(string(rawBody), `"fields":"index"`) {
-		t.Fatalf("expected raw body to contain \"fields\":\"index\"; body = %s", rawBody)
+			if len(captured.Requests) != 1 || captured.Requests[0].UpdateSheetProperties == nil || captured.Requests[0].UpdateSheetProperties.Properties == nil {
+				t.Fatalf("unexpected requests: %#v", captured.Requests)
+			}
+			request := captured.Requests[0].UpdateSheetProperties
+			if request.Properties.SheetId != tc.wantID || request.Properties.Index != tc.wantIndex || request.Fields != "index" {
+				t.Fatalf("request = %#v, want sheetId=%d index=%d fields=index", request, tc.wantID, tc.wantIndex)
+			}
+		})
 	}
 }
 
-func TestSheetsReorderTabCmd_SheetIDZeroIsSerialized(t *testing.T) {
-	var rawBody []byte
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/sheets/v4")
-		path = strings.TrimPrefix(path, "/v4")
-		switch {
-		case strings.HasPrefix(path, "/spreadsheets/s1") && !strings.Contains(path, ":batchUpdate") && r.Method == http.MethodGet:
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"spreadsheetId": "s1",
-				"sheets": []map[string]any{
-					{"properties": map[string]any{"sheetId": 0, "title": "First", "index": 0}},
-					{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
-				},
-			})
-		case strings.Contains(path, "/spreadsheets/s1:batchUpdate") && r.Method == http.MethodPost:
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Fatalf("read body: %v", err)
+func TestSheetsReorderTabCmd_ZeroValuesAreSerialized(t *testing.T) {
+	tests := []struct {
+		name    string
+		catalog []map[string]any
+		tab     string
+		to      string
+		want    []string
+	}{
+		{
+			name: "index zero", tab: "Second", to: "0", want: []string{`"index":0`, `"fields":"index"`},
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 11, "title": "First", "index": 0}},
+				{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
+			},
+		},
+		{
+			name: "sheet ID zero", tab: "First", to: "1", want: []string{`"sheetId":0`, `"index":2`},
+			catalog: []map[string]any{
+				{"properties": map[string]any{"sheetId": 0, "title": "First", "index": 0}},
+				{"properties": map[string]any{"sheetId": 22, "title": "Second", "index": 1}},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var rawBody []byte
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				path := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/sheets/v4"), "/v4")
+				switch {
+				case strings.HasPrefix(path, "/spreadsheets/s1") && !strings.Contains(path, ":batchUpdate") && r.Method == http.MethodGet:
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{"spreadsheetId": "s1", "sheets": tc.catalog})
+				case strings.Contains(path, "/spreadsheets/s1:batchUpdate") && r.Method == http.MethodPost:
+					var err error
+					rawBody, err = io.ReadAll(r.Body)
+					if err != nil {
+						t.Fatalf("read body: %v", err)
+					}
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", tc.tab, "--to", tc.to}, newSheetsCmdContext(t, newSheetsServiceFromServer(t, srv)), &RootFlags{Account: "a@b.com"}); err != nil {
+				t.Fatalf("reorder-tab: %v", err)
 			}
-			rawBody = body
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	svc := newSheetsServiceFromServer(t, srv)
-
-	flags := &RootFlags{Account: "a@b.com"}
-	ctx := newSheetsCmdContext(t, svc)
-
-	if err := runKong(t, &SheetsReorderTabCmd{}, []string{"s1", "--tab", "First", "--to", "1"}, ctx, flags); err != nil {
-		t.Fatalf("reorder-tab: %v", err)
-	}
-
-	body := string(rawBody)
-	if !strings.Contains(body, `"sheetId":0`) {
-		t.Fatalf("expected raw body to contain \"sheetId\":0; body = %s", rawBody)
-	}
-	if !strings.Contains(body, `"index":2`) {
-		t.Fatalf("expected rightward final index 1 to send API index 2; body = %s", rawBody)
+			for _, want := range tc.want {
+				if !strings.Contains(string(rawBody), want) {
+					t.Fatalf("body %s does not contain %s", rawBody, want)
+				}
+			}
+		})
 	}
 }
 

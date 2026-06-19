@@ -11,77 +11,48 @@ import (
 	"google.golang.org/api/calendar/v3"
 )
 
-func TestExecuteCalendarUnsubscribeJSON(t *testing.T) {
-	deleteCalls := 0
-	svc, closeSvc := newCalendarServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || !strings.Contains(r.URL.Path, "/users/me/calendarList/team@example.com") {
-			http.NotFound(w, r)
-			return
-		}
-		deleteCalls++
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer closeSvc()
+func TestExecuteCalendarLifecycleJSON(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		command    string
+		calendarID string
+		resultKey  string
+	}{
+		{name: "unsubscribe", path: "/users/me/calendarList/team@example.com", command: "unsubscribe", calendarID: "team@example.com", resultKey: "unsubscribed"},
+		{name: "delete calendar", path: "/calendars/owned@example.com", command: "delete-calendar", calendarID: "owned@example.com", resultKey: "deleted"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			deleteCalls := 0
+			svc, closeSvc := newCalendarServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodDelete || !strings.Contains(r.URL.Path, tc.path) {
+					http.NotFound(w, r)
+					return
+				}
+				deleteCalls++
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer closeSvc()
 
-	result := executeWithCalendarTestService(t, []string{
-		"--json",
-		"--force",
-		"--account", "a@b.com",
-		"calendar", "unsubscribe", "team@example.com",
-	}, svc)
-	if result.err != nil {
-		t.Fatalf("unsubscribe: %v", result.err)
-	}
-	if deleteCalls != 1 {
-		t.Fatalf("delete calls = %d, want 1", deleteCalls)
-	}
+			result := executeWithCalendarTestService(t, []string{
+				"--json", "--force", "--account", "a@b.com", "calendar", tc.command, tc.calendarID,
+			}, svc)
+			if result.err != nil {
+				t.Fatalf("execute: %v", result.err)
+			}
+			if deleteCalls != 1 {
+				t.Fatalf("delete calls = %d, want 1", deleteCalls)
+			}
 
-	var payload struct {
-		Unsubscribed bool   `json:"unsubscribed"`
-		CalendarID   string `json:"calendarId"`
-	}
-	if err := json.Unmarshal([]byte(result.stdout), &payload); err != nil {
-		t.Fatalf("decode output: %v", err)
-	}
-	if !payload.Unsubscribed || payload.CalendarID != "team@example.com" {
-		t.Fatalf("unexpected output: %#v", payload)
-	}
-}
-
-func TestExecuteCalendarDeleteCalendarJSON(t *testing.T) {
-	deleteCalls := 0
-	svc, closeSvc := newCalendarServiceForTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || !strings.Contains(r.URL.Path, "/calendars/owned@example.com") {
-			http.NotFound(w, r)
-			return
-		}
-		deleteCalls++
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer closeSvc()
-
-	result := executeWithCalendarTestService(t, []string{
-		"--json",
-		"--force",
-		"--account", "a@b.com",
-		"calendar", "delete-calendar", "owned@example.com",
-	}, svc)
-	if result.err != nil {
-		t.Fatalf("delete calendar: %v", result.err)
-	}
-	if deleteCalls != 1 {
-		t.Fatalf("delete calls = %d, want 1", deleteCalls)
-	}
-
-	var payload struct {
-		Deleted    bool   `json:"deleted"`
-		CalendarID string `json:"calendarId"`
-	}
-	if err := json.Unmarshal([]byte(result.stdout), &payload); err != nil {
-		t.Fatalf("decode output: %v", err)
-	}
-	if !payload.Deleted || payload.CalendarID != "owned@example.com" {
-		t.Fatalf("unexpected output: %#v", payload)
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(result.stdout), &payload); err != nil {
+				t.Fatalf("decode output: %v", err)
+			}
+			if payload[tc.resultKey] != true || payload["calendarId"] != tc.calendarID {
+				t.Fatalf("unexpected output: %#v", payload)
+			}
+		})
 	}
 }
 
