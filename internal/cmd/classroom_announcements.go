@@ -31,56 +31,27 @@ type ClassroomAnnouncementsListCmd struct {
 }
 
 func (c *ClassroomAnnouncementsListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	courseID := strings.TrimSpace(c.CourseID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.Announcement, string, error) {
-		call := svc.Courses.Announcements.List(courseID).PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		if states := splitCSV(c.States); len(states) > 0 {
-			upper := make([]string, 0, len(states))
-			for _, state := range states {
-				upper = append(upper, strings.ToUpper(state))
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.Announcement]{
+		parentName: "courseId", parentID: c.CourseID, max: c.Max, page: c.Page, all: c.All,
+		failEmpty: c.FailEmpty, jsonKey: "announcements", emptyMessage: "No announcements", columns: classroomAnnouncementColumns(),
+		fetch: func(ctx context.Context, svc *classroom.Service, courseID string, max int64, pageToken string) ([]*classroom.Announcement, string, error) {
+			call := svc.Courses.Announcements.List(courseID).PageSize(max).Context(ctx)
+			if strings.TrimSpace(pageToken) != "" {
+				call = call.PageToken(pageToken)
 			}
-			call.AnnouncementStates(upper...)
-		}
-		if v := strings.TrimSpace(c.OrderBy); v != "" {
-			call.OrderBy(v)
-		}
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.Announcements, resp.NextPageToken, nil
-	}
-
-	announcements, nextPageToken, err := fetchClassroomPagedList(c.All, c.Page, fetch)
-	if err != nil {
-		return err
-	}
-
-	return writeClassroomPagedList(
-		ctx,
-		"announcements",
-		announcements,
-		nextPageToken,
-		"No announcements",
-		c.FailEmpty,
-		false,
-		classroomAnnouncementColumns(),
-	)
+			if states := upperClassroomStates(c.States); len(states) > 0 {
+				call.AnnouncementStates(states...)
+			}
+			if orderBy := strings.TrimSpace(c.OrderBy); orderBy != "" {
+				call.OrderBy(orderBy)
+			}
+			resp, err := call.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			return resp.Announcements, resp.NextPageToken, nil
+		},
+	})
 }
 
 type ClassroomAnnouncementsGetCmd struct {
@@ -228,37 +199,17 @@ type ClassroomAnnouncementsDeleteCmd struct {
 }
 
 func (c *ClassroomAnnouncementsDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	announcementID := strings.TrimSpace(c.AnnouncementID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if announcementID == "" {
-		return usage("empty announcementId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.announcements.delete", map[string]any{
-		"course_id":       courseID,
-		"announcement_id": announcementID,
-	}, fmt.Sprintf("delete announcement %s from %s", announcementID, courseID)); err != nil {
-		return err
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.Courses.Announcements.Delete(courseID, announcementID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("deleted", true),
-		kv("courseId", courseID),
-		kv("announcementId", announcementID),
-	)
+	return runClassroomDelete(ctx, flags, c.CourseID, c.AnnouncementID, classroomDeleteOperation{
+		op: "classroom.announcements.delete", parentName: "courseId", parentPayloadKey: "course_id", parentResultKey: "courseId",
+		childName: "announcementId", childPayloadKey: "announcement_id", childResultKey: "announcementId", successResultKey: "deleted",
+		action: func(courseID, announcementID string) string {
+			return fmt.Sprintf("delete announcement %s from %s", announcementID, courseID)
+		},
+		delete: func(svc *classroom.Service, courseID, announcementID string) error {
+			_, err := svc.Courses.Announcements.Delete(courseID, announcementID).Context(ctx).Do()
+			return err
+		},
+	})
 }
 
 type ClassroomAnnouncementsAssigneesCmd struct {
@@ -270,52 +221,27 @@ type ClassroomAnnouncementsAssigneesCmd struct {
 }
 
 func (c *ClassroomAnnouncementsAssigneesCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	announcementID := strings.TrimSpace(c.AnnouncementID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if announcementID == "" {
-		return usage("empty announcementId")
-	}
+	return runClassroomAssigneeMutation(ctx, flags, c.CourseID, c.AnnouncementID, c.Mode, c.AddStudents, c.RemoveStudents,
+		classroomAnnouncementAssigneeOperation(ctx))
+}
 
-	mode, opts, err := normalizeAssigneeMode(c.Mode, c.AddStudents, c.RemoveStudents)
-	if err != nil {
-		return usage(err.Error())
+func classroomAnnouncementAssigneeOperation(ctx context.Context) classroomAssigneeOperation[*classroom.ModifyAnnouncementAssigneesRequest, classroom.Announcement] {
+	return classroomAssigneeOperation[*classroom.ModifyAnnouncementAssigneesRequest, classroom.Announcement]{
+		op: "classroom.announcements.assignees", itemName: "announcementId", itemPayloadKey: "announcement_id", jsonKey: "announcement",
+		buildRequest: buildClassroomAnnouncementAssigneeRequest,
+		mutate: func(svc *classroom.Service, courseID, announcementID string, request *classroom.ModifyAnnouncementAssigneesRequest) (*classroom.Announcement, error) {
+			return svc.Courses.Announcements.ModifyAssignees(courseID, announcementID, request).Context(ctx).Do()
+		},
+		resultID:           func(announcement *classroom.Announcement) string { return announcement.Id },
+		resultAssigneeMode: func(announcement *classroom.Announcement) string { return announcement.AssigneeMode },
 	}
-	req := &classroom.ModifyAnnouncementAssigneesRequest{
-		AssigneeMode:                    mode,
-		ModifyIndividualStudentsOptions: opts,
-	}
-	if req.AssigneeMode == "" && req.ModifyIndividualStudentsOptions == nil {
-		return usage("no assignee changes specified")
-	}
+}
 
-	if dryRunErr := dryRunExit(ctx, flags, "classroom.announcements.assignees", map[string]any{
-		"course_id":       courseID,
-		"announcement_id": announcementID,
-		"request":         req,
-	}); dryRunErr != nil {
-		return dryRunErr
+func buildClassroomAnnouncementAssigneeRequest(mode string, options *classroom.ModifyIndividualStudentsOptions) (*classroom.ModifyAnnouncementAssigneesRequest, error) {
+	if err := validateClassroomAssigneeChanges(mode, options); err != nil {
+		return nil, err
 	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	updated, err := svc.Courses.Announcements.ModifyAssignees(courseID, announcementID, req).Context(ctx).Do()
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"announcement": updated})
-	}
-	u.Out().Linef("id\t%s", updated.Id)
-	u.Out().Linef("assignee_mode\t%s", updated.AssigneeMode)
-	return nil
+	return &classroom.ModifyAnnouncementAssigneesRequest{AssigneeMode: mode, ModifyIndividualStudentsOptions: options}, nil
 }
 
 func truncateClassroomText(s string, maxLen int) string {

@@ -27,70 +27,11 @@ type ClassroomStudentsListCmd struct {
 }
 
 func (c *ClassroomStudentsListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.Student, string, error) {
-		call := svc.Courses.Students.List(courseID).PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.Students, resp.NextPageToken, nil
-	}
-
-	students, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
-	if err != nil {
-		return err
-	}
-	students = nonNilClassroomItems(students)
-
-	if outfmt.IsJSON(ctx) {
-		if err := outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
-			"students":      students,
-			"nextPageToken": nextPageToken,
-		}); err != nil {
-			return err
-		}
-		if len(students) == 0 {
-			return failEmptyExit(c.FailEmpty)
-		}
-		return nil
-	}
-
-	if len(students) == 0 {
-		u.Err().Println("No students")
-		return failEmptyExit(c.FailEmpty)
-	}
-
-	if err := outfmt.WriteTable(
-		ctx,
-		stdoutWriter(ctx),
-		compactClassroomRows(students),
-		classroomStudentColumns(),
-	); err != nil {
-		return err
-	}
-	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
-	return nil
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.Student]{
+		parentName: "courseId", parentID: c.CourseID, max: c.Max, page: c.Page, all: c.All,
+		failEmpty: c.FailEmpty, jsonKey: "students", emptyMessage: "No students", columns: classroomStudentColumns(),
+		fetch: fetchClassroomStudentPage,
+	})
 }
 
 type ClassroomStudentsGetCmd struct {
@@ -196,42 +137,17 @@ type ClassroomStudentsRemoveCmd struct {
 }
 
 func (c *ClassroomStudentsRemoveCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	userID := strings.TrimSpace(c.UserID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if userID == "" {
-		return usage("empty userId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.students.remove", map[string]any{
-		"course_id": courseID,
-		"user_id":   userID,
-	}, fmt.Sprintf("remove student %s from %s", userID, courseID)); err != nil {
-		return err
-	}
-
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.Courses.Students.Delete(courseID, userID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("removed", true),
-		kv("courseId", courseID),
-		kv("userId", userID),
-	)
+	return runClassroomDelete(ctx, flags, c.CourseID, c.UserID, classroomDeleteOperation{
+		op: "classroom.students.remove", parentName: "courseId", parentPayloadKey: "course_id", parentResultKey: "courseId",
+		childName: "userId", childPayloadKey: "user_id", childResultKey: "userId", successResultKey: "removed",
+		action: func(courseID, userID string) string {
+			return fmt.Sprintf("remove student %s from %s", userID, courseID)
+		},
+		delete: func(svc *classroom.Service, courseID, userID string) error {
+			_, err := svc.Courses.Students.Delete(courseID, userID).Context(ctx).Do()
+			return err
+		},
+	})
 }
 
 type ClassroomTeachersCmd struct {
@@ -250,70 +166,11 @@ type ClassroomTeachersListCmd struct {
 }
 
 func (c *ClassroomTeachersListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.Teacher, string, error) {
-		call := svc.Courses.Teachers.List(courseID).PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.Teachers, resp.NextPageToken, nil
-	}
-
-	teachers, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
-	if err != nil {
-		return err
-	}
-	teachers = nonNilClassroomItems(teachers)
-
-	if outfmt.IsJSON(ctx) {
-		if err := outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
-			"teachers":      teachers,
-			"nextPageToken": nextPageToken,
-		}); err != nil {
-			return err
-		}
-		if len(teachers) == 0 {
-			return failEmptyExit(c.FailEmpty)
-		}
-		return nil
-	}
-
-	if len(teachers) == 0 {
-		u.Err().Println("No teachers")
-		return failEmptyExit(c.FailEmpty)
-	}
-
-	if err := outfmt.WriteTable(
-		ctx,
-		stdoutWriter(ctx),
-		compactClassroomRows(teachers),
-		classroomTeacherColumns(),
-	); err != nil {
-		return err
-	}
-	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
-	return nil
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.Teacher]{
+		parentName: "courseId", parentID: c.CourseID, max: c.Max, page: c.Page, all: c.All,
+		failEmpty: c.FailEmpty, jsonKey: "teachers", emptyMessage: "No teachers", columns: classroomTeacherColumns(),
+		fetch: fetchClassroomTeacherPage,
+	})
 }
 
 type ClassroomTeachersGetCmd struct {
@@ -410,42 +267,17 @@ type ClassroomTeachersRemoveCmd struct {
 }
 
 func (c *ClassroomTeachersRemoveCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	userID := strings.TrimSpace(c.UserID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if userID == "" {
-		return usage("empty userId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.teachers.remove", map[string]any{
-		"course_id": courseID,
-		"user_id":   userID,
-	}, fmt.Sprintf("remove teacher %s from %s", userID, courseID)); err != nil {
-		return err
-	}
-
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.Courses.Teachers.Delete(courseID, userID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("removed", true),
-		kv("courseId", courseID),
-		kv("userId", userID),
-	)
+	return runClassroomDelete(ctx, flags, c.CourseID, c.UserID, classroomDeleteOperation{
+		op: "classroom.teachers.remove", parentName: "courseId", parentPayloadKey: "course_id", parentResultKey: "courseId",
+		childName: "userId", childPayloadKey: "user_id", childResultKey: "userId", successResultKey: "removed",
+		action: func(courseID, userID string) string {
+			return fmt.Sprintf("remove teacher %s from %s", userID, courseID)
+		},
+		delete: func(svc *classroom.Service, courseID, userID string) error {
+			_, err := svc.Courses.Teachers.Delete(courseID, userID).Context(ctx).Do()
+			return err
+		},
+	})
 }
 
 type ClassroomRosterCmd struct {

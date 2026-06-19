@@ -27,73 +27,24 @@ type ClassroomGuardiansListCmd struct {
 }
 
 func (c *ClassroomGuardiansListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	studentID := strings.TrimSpace(c.StudentID)
-	if studentID == "" {
-		return usage("empty studentId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.Guardian, string, error) {
-		call := svc.UserProfiles.Guardians.List(studentID).PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		if v := strings.TrimSpace(c.Email); v != "" {
-			call.InvitedEmailAddress(v)
-		}
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.Guardians, resp.NextPageToken, nil
-	}
-
-	guardians, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
-	if err != nil {
-		return err
-	}
-	guardians = nonNilClassroomItems(guardians)
-
-	if outfmt.IsJSON(ctx) {
-		if err := outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
-			"guardians":     guardians,
-			"nextPageToken": nextPageToken,
-		}); err != nil {
-			return err
-		}
-		if len(guardians) == 0 {
-			return failEmptyExit(c.FailEmpty)
-		}
-		return nil
-	}
-
-	if len(guardians) == 0 {
-		u.Err().Println("No guardians")
-		return failEmptyExit(c.FailEmpty)
-	}
-
-	if err := outfmt.WriteTable(
-		ctx,
-		stdoutWriter(ctx),
-		compactClassroomRows(guardians),
-		classroomGuardianColumns(),
-	); err != nil {
-		return err
-	}
-	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
-	return nil
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.Guardian]{
+		parentName: "studentId", parentID: c.StudentID, max: c.Max, page: c.Page, all: c.All,
+		failEmpty: c.FailEmpty, jsonKey: "guardians", emptyMessage: "No guardians", columns: classroomGuardianColumns(),
+		fetch: func(ctx context.Context, svc *classroom.Service, studentID string, max int64, pageToken string) ([]*classroom.Guardian, string, error) {
+			call := svc.UserProfiles.Guardians.List(studentID).PageSize(max).Context(ctx)
+			if strings.TrimSpace(pageToken) != "" {
+				call = call.PageToken(pageToken)
+			}
+			if email := strings.TrimSpace(c.Email); email != "" {
+				call.InvitedEmailAddress(email)
+			}
+			resp, err := call.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			return resp.Guardians, resp.NextPageToken, nil
+		},
+	})
 }
 
 type ClassroomGuardiansGetCmd struct {
@@ -143,42 +94,17 @@ type ClassroomGuardiansDeleteCmd struct {
 }
 
 func (c *ClassroomGuardiansDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	studentID := strings.TrimSpace(c.StudentID)
-	guardianID := strings.TrimSpace(c.GuardianID)
-	if studentID == "" {
-		return usage("empty studentId")
-	}
-	if guardianID == "" {
-		return usage("empty guardianId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.guardians.delete", map[string]any{
-		"student_id":  studentID,
-		"guardian_id": guardianID,
-	}, fmt.Sprintf("delete guardian %s for student %s", guardianID, studentID)); err != nil {
-		return err
-	}
-
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.UserProfiles.Guardians.Delete(studentID, guardianID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("deleted", true),
-		kv("studentId", studentID),
-		kv("guardianId", guardianID),
-	)
+	return runClassroomDelete(ctx, flags, c.StudentID, c.GuardianID, classroomDeleteOperation{
+		op: "classroom.guardians.delete", parentName: "studentId", parentPayloadKey: "student_id", parentResultKey: "studentId",
+		childName: "guardianId", childPayloadKey: "guardian_id", childResultKey: "guardianId", successResultKey: "deleted",
+		action: func(studentID, guardianID string) string {
+			return fmt.Sprintf("delete guardian %s for student %s", guardianID, studentID)
+		},
+		delete: func(svc *classroom.Service, studentID, guardianID string) error {
+			_, err := svc.UserProfiles.Guardians.Delete(studentID, guardianID).Context(ctx).Do()
+			return err
+		},
+	})
 }
 
 type ClassroomGuardianInvitesCmd struct {
@@ -198,80 +124,27 @@ type ClassroomGuardianInvitesListCmd struct {
 }
 
 func (c *ClassroomGuardianInvitesListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	studentID := strings.TrimSpace(c.StudentID)
-	if studentID == "" {
-		return usage("empty studentId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.GuardianInvitation, string, error) {
-		call := svc.UserProfiles.GuardianInvitations.List(studentID).PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		if v := strings.TrimSpace(c.Email); v != "" {
-			call.InvitedEmailAddress(v)
-		}
-		if states := splitCSV(c.States); len(states) > 0 {
-			upper := make([]string, 0, len(states))
-			for _, state := range states {
-				upper = append(upper, strings.ToUpper(state))
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.GuardianInvitation]{
+		parentName: "studentId", parentID: c.StudentID, max: c.Max, page: c.Page, all: c.All,
+		failEmpty: c.FailEmpty, jsonKey: "invitations", emptyMessage: "No guardian invitations", columns: classroomGuardianInvitationColumns(),
+		fetch: func(ctx context.Context, svc *classroom.Service, studentID string, max int64, pageToken string) ([]*classroom.GuardianInvitation, string, error) {
+			call := svc.UserProfiles.GuardianInvitations.List(studentID).PageSize(max).Context(ctx)
+			if strings.TrimSpace(pageToken) != "" {
+				call = call.PageToken(pageToken)
 			}
-			call.States(upper...)
-		}
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.GuardianInvitations, resp.NextPageToken, nil
-	}
-
-	invitations, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
-	if err != nil {
-		return err
-	}
-	invitations = nonNilClassroomItems(invitations)
-
-	if outfmt.IsJSON(ctx) {
-		if err := outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
-			"invitations":   invitations,
-			"nextPageToken": nextPageToken,
-		}); err != nil {
-			return err
-		}
-		if len(invitations) == 0 {
-			return failEmptyExit(c.FailEmpty)
-		}
-		return nil
-	}
-
-	if len(invitations) == 0 {
-		u.Err().Println("No guardian invitations")
-		return failEmptyExit(c.FailEmpty)
-	}
-
-	if err := outfmt.WriteTable(
-		ctx,
-		stdoutWriter(ctx),
-		compactClassroomRows(invitations),
-		classroomGuardianInvitationColumns(),
-	); err != nil {
-		return err
-	}
-	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
-	return nil
+			if email := strings.TrimSpace(c.Email); email != "" {
+				call.InvitedEmailAddress(email)
+			}
+			if states := upperClassroomStates(c.States); len(states) > 0 {
+				call.States(states...)
+			}
+			resp, err := call.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			return resp.GuardianInvitations, resp.NextPageToken, nil
+		},
+	})
 }
 
 type ClassroomGuardianInvitesGetCmd struct {

@@ -29,76 +29,30 @@ type ClassroomInvitationsListCmd struct {
 }
 
 func (c *ClassroomInvitationsListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
 	if strings.TrimSpace(c.CourseID) == "" && strings.TrimSpace(c.UserID) == "" {
 		return usage("at least one of --course or --user is required")
 	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-	account, err := requireAccount(flags)
-	if err != nil {
-		return err
-	}
-
-	svc, err := classroomService(ctx, account)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	fetch := func(pageToken string) ([]*classroom.Invitation, string, error) {
-		call := svc.Invitations.List().PageSize(c.Max).Context(ctx)
-		if strings.TrimSpace(pageToken) != "" {
-			call = call.PageToken(pageToken)
-		}
-		if v := strings.TrimSpace(c.CourseID); v != "" {
-			call.CourseId(v)
-		}
-		if v := strings.TrimSpace(c.UserID); v != "" {
-			call.UserId(v)
-		}
-
-		resp, callErr := call.Do()
-		if callErr != nil {
-			return nil, "", wrapClassroomError(callErr)
-		}
-		return resp.Invitations, resp.NextPageToken, nil
-	}
-
-	invitations, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
-	if err != nil {
-		return err
-	}
-	invitations = nonNilClassroomItems(invitations)
-
-	if outfmt.IsJSON(ctx) {
-		if err := outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
-			"invitations":   invitations,
-			"nextPageToken": nextPageToken,
-		}); err != nil {
-			return err
-		}
-		if len(invitations) == 0 {
-			return failEmptyExit(c.FailEmpty)
-		}
-		return nil
-	}
-
-	if len(invitations) == 0 {
-		u.Err().Println("No invitations")
-		return failEmptyExit(c.FailEmpty)
-	}
-
-	if err := outfmt.WriteTable(
-		ctx,
-		stdoutWriter(ctx),
-		compactClassroomRows(invitations),
-		classroomInvitationColumns(),
-	); err != nil {
-		return err
-	}
-	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
-	return nil
+	return runClassroomPagedList(ctx, flags, classroomPagedListOptions[classroom.Invitation]{
+		max: c.Max, page: c.Page, all: c.All, failEmpty: c.FailEmpty,
+		jsonKey: "invitations", emptyMessage: "No invitations", columns: classroomInvitationColumns(),
+		fetch: func(ctx context.Context, svc *classroom.Service, _ string, max int64, pageToken string) ([]*classroom.Invitation, string, error) {
+			call := svc.Invitations.List().PageSize(max).Context(ctx)
+			if strings.TrimSpace(pageToken) != "" {
+				call = call.PageToken(pageToken)
+			}
+			if courseID := strings.TrimSpace(c.CourseID); courseID != "" {
+				call.CourseId(courseID)
+			}
+			if userID := strings.TrimSpace(c.UserID); userID != "" {
+				call.UserId(userID)
+			}
+			resp, err := call.Do()
+			if err != nil {
+				return nil, "", err
+			}
+			return resp.Invitations, resp.NextPageToken, nil
+		},
+	})
 }
 
 type ClassroomInvitationsGetCmd struct {

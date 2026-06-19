@@ -33,93 +33,12 @@ type ClassroomCourseworkListCmd struct {
 }
 
 func (c *ClassroomCourseworkListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	courseID := strings.TrimSpace(c.CourseID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	makeCall := func(page string) (*classroom.ListCourseWorkResponse, error) {
-		call := svc.Courses.CourseWork.List(courseID).PageSize(c.Max).PageToken(page).Context(ctx)
-		if states := splitCSV(c.States); len(states) > 0 {
-			upper := make([]string, 0, len(states))
-			for _, state := range states {
-				upper = append(upper, strings.ToUpper(state))
-			}
-			call.CourseWorkStates(upper...)
-		}
-		if v := strings.TrimSpace(c.OrderBy); v != "" {
-			call.OrderBy(v)
-		}
-		return call.Do()
-	}
-
-	fetch := func(page string) ([]*classroom.CourseWork, string, error) {
-		resp, callErr := makeCall(page)
-		if callErr != nil {
-			return nil, "", callErr
-		}
-		return resp.CourseWork, resp.NextPageToken, nil
-	}
-
-	var coursework []*classroom.CourseWork
-	var nextPageToken string
-	if c.All {
-		all, _, err := loadPagedItems(c.Page, true, fetch)
-		if err != nil {
-			return wrapClassroomError(err)
-		}
-		all = nonNilClassroomItems(all)
-		coursework = all
-		if topic := strings.TrimSpace(c.Topic); topic != "" {
-			filtered := coursework[:0]
-			for _, work := range coursework {
-				if work == nil {
-					continue
-				}
-				if work.TopicId == topic {
-					filtered = append(filtered, work)
-				}
-			}
-			coursework = filtered
-		}
-	} else {
-		var err error
-		coursework, nextPageToken, err = scanClassroomTopicPages(
-			c.Topic,
-			c.Page,
-			c.ScanPages,
-			fetch,
-			func(work *classroom.CourseWork) string {
-				if work == nil {
-					return ""
-				}
-				return work.TopicId
-			},
-		)
-		if err != nil {
-			return wrapClassroomError(err)
-		}
-	}
-	coursework = nonNilClassroomItems(coursework)
-
-	return writeClassroomPagedList(
-		ctx,
-		"coursework",
-		coursework,
-		nextPageToken,
-		"No coursework",
-		c.FailEmpty,
-		true,
-		classroomCourseworkColumns(),
-	)
+	return runClassroomTopicList(ctx, flags, classroomTopicListOptions[classroom.CourseWork]{
+		courseID: c.CourseID, states: c.States, topic: c.Topic, orderBy: c.OrderBy,
+		max: c.Max, page: c.Page, all: c.All, failEmpty: c.FailEmpty, scanPages: c.ScanPages,
+		jsonKey: "coursework", emptyMessage: "No coursework", columns: classroomCourseworkColumns(),
+		fetch: fetchClassroomCourseworkPage, topicID: classroomCourseworkTopicID,
+	})
 }
 
 type ClassroomCourseworkGetCmd struct {
@@ -308,37 +227,17 @@ type ClassroomCourseworkDeleteCmd struct {
 }
 
 func (c *ClassroomCourseworkDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	courseworkID := strings.TrimSpace(c.CourseworkID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if courseworkID == "" {
-		return usage("empty courseworkId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.coursework.delete", map[string]any{
-		"course_id":     courseID,
-		"coursework_id": courseworkID,
-	}, fmt.Sprintf("delete coursework %s from %s", courseworkID, courseID)); err != nil {
-		return err
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.Courses.CourseWork.Delete(courseID, courseworkID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("deleted", true),
-		kv("courseId", courseID),
-		kv("courseworkId", courseworkID),
-	)
+	return runClassroomDelete(ctx, flags, c.CourseID, c.CourseworkID, classroomDeleteOperation{
+		op: "classroom.coursework.delete", parentName: "courseId", parentPayloadKey: "course_id", parentResultKey: "courseId",
+		childName: "courseworkId", childPayloadKey: "coursework_id", childResultKey: "courseworkId", successResultKey: "deleted",
+		action: func(courseID, courseworkID string) string {
+			return fmt.Sprintf("delete coursework %s from %s", courseworkID, courseID)
+		},
+		delete: func(svc *classroom.Service, courseID, courseworkID string) error {
+			_, err := svc.Courses.CourseWork.Delete(courseID, courseworkID).Context(ctx).Do()
+			return err
+		},
+	})
 }
 
 type ClassroomCourseworkAssigneesCmd struct {
@@ -350,50 +249,25 @@ type ClassroomCourseworkAssigneesCmd struct {
 }
 
 func (c *ClassroomCourseworkAssigneesCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	courseworkID := strings.TrimSpace(c.CourseworkID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if courseworkID == "" {
-		return usage("empty courseworkId")
-	}
+	return runClassroomAssigneeMutation(ctx, flags, c.CourseID, c.CourseworkID, c.Mode, c.AddStudents, c.RemoveStudents,
+		classroomCourseworkAssigneeOperation(ctx))
+}
 
-	mode, opts, err := normalizeAssigneeMode(c.Mode, c.AddStudents, c.RemoveStudents)
-	if err != nil {
-		return usage(err.Error())
+func classroomCourseworkAssigneeOperation(ctx context.Context) classroomAssigneeOperation[*classroom.ModifyCourseWorkAssigneesRequest, classroom.CourseWork] {
+	return classroomAssigneeOperation[*classroom.ModifyCourseWorkAssigneesRequest, classroom.CourseWork]{
+		op: "classroom.coursework.assignees", itemName: "courseworkId", itemPayloadKey: "coursework_id", jsonKey: "coursework",
+		buildRequest: buildClassroomCourseworkAssigneeRequest,
+		mutate: func(svc *classroom.Service, courseID, courseworkID string, request *classroom.ModifyCourseWorkAssigneesRequest) (*classroom.CourseWork, error) {
+			return svc.Courses.CourseWork.ModifyAssignees(courseID, courseworkID, request).Context(ctx).Do()
+		},
+		resultID:           func(work *classroom.CourseWork) string { return work.Id },
+		resultAssigneeMode: func(work *classroom.CourseWork) string { return work.AssigneeMode },
 	}
-	req := &classroom.ModifyCourseWorkAssigneesRequest{
-		AssigneeMode:                    mode,
-		ModifyIndividualStudentsOptions: opts,
-	}
-	if req.AssigneeMode == "" && req.ModifyIndividualStudentsOptions == nil {
-		return usage("no assignee changes specified")
-	}
+}
 
-	if dryRunErr := dryRunExit(ctx, flags, "classroom.coursework.assignees", map[string]any{
-		"course_id":     courseID,
-		"coursework_id": courseworkID,
-		"request":       req,
-	}); dryRunErr != nil {
-		return dryRunErr
+func buildClassroomCourseworkAssigneeRequest(mode string, options *classroom.ModifyIndividualStudentsOptions) (*classroom.ModifyCourseWorkAssigneesRequest, error) {
+	if err := validateClassroomAssigneeChanges(mode, options); err != nil {
+		return nil, err
 	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	updated, err := svc.Courses.CourseWork.ModifyAssignees(courseID, courseworkID, req).Context(ctx).Do()
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if outfmt.IsJSON(ctx) {
-		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{"coursework": updated})
-	}
-	u.Out().Linef("id\t%s", updated.Id)
-	u.Out().Linef("assignee_mode\t%s", updated.AssigneeMode)
-	return nil
+	return &classroom.ModifyCourseWorkAssigneesRequest{AssigneeMode: mode, ModifyIndividualStudentsOptions: options}, nil
 }

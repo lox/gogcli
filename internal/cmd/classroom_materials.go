@@ -32,93 +32,12 @@ type ClassroomMaterialsListCmd struct {
 }
 
 func (c *ClassroomMaterialsListCmd) Run(ctx context.Context, flags *RootFlags) error {
-	courseID := strings.TrimSpace(c.CourseID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if c.Max <= 0 {
-		return usage("max must be > 0")
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	makeCall := func(page string) (*classroom.ListCourseWorkMaterialResponse, error) {
-		call := svc.Courses.CourseWorkMaterials.List(courseID).PageSize(c.Max).PageToken(page).Context(ctx)
-		if states := splitCSV(c.States); len(states) > 0 {
-			upper := make([]string, 0, len(states))
-			for _, state := range states {
-				upper = append(upper, strings.ToUpper(state))
-			}
-			call.CourseWorkMaterialStates(upper...)
-		}
-		if v := strings.TrimSpace(c.OrderBy); v != "" {
-			call.OrderBy(v)
-		}
-		return call.Do()
-	}
-
-	fetch := func(page string) ([]*classroom.CourseWorkMaterial, string, error) {
-		resp, callErr := makeCall(page)
-		if callErr != nil {
-			return nil, "", callErr
-		}
-		return resp.CourseWorkMaterial, resp.NextPageToken, nil
-	}
-
-	var materials []*classroom.CourseWorkMaterial
-	var nextPageToken string
-	if c.All {
-		all, _, err := loadPagedItems(c.Page, true, fetch)
-		if err != nil {
-			return wrapClassroomError(err)
-		}
-		all = nonNilClassroomItems(all)
-		materials = all
-		if topic := strings.TrimSpace(c.Topic); topic != "" {
-			filtered := materials[:0]
-			for _, material := range materials {
-				if material == nil {
-					continue
-				}
-				if material.TopicId == topic {
-					filtered = append(filtered, material)
-				}
-			}
-			materials = filtered
-		}
-	} else {
-		var err error
-		materials, nextPageToken, err = scanClassroomTopicPages(
-			c.Topic,
-			c.Page,
-			c.ScanPages,
-			fetch,
-			func(material *classroom.CourseWorkMaterial) string {
-				if material == nil {
-					return ""
-				}
-				return material.TopicId
-			},
-		)
-		if err != nil {
-			return wrapClassroomError(err)
-		}
-	}
-	materials = nonNilClassroomItems(materials)
-
-	return writeClassroomPagedList(
-		ctx,
-		"materials",
-		materials,
-		nextPageToken,
-		"No materials",
-		c.FailEmpty,
-		true,
-		classroomMaterialColumns(),
-	)
+	return runClassroomTopicList(ctx, flags, classroomTopicListOptions[classroom.CourseWorkMaterial]{
+		courseID: c.CourseID, states: c.States, topic: c.Topic, orderBy: c.OrderBy,
+		max: c.Max, page: c.Page, all: c.All, failEmpty: c.FailEmpty, scanPages: c.ScanPages,
+		jsonKey: "materials", emptyMessage: "No materials", columns: classroomMaterialColumns(),
+		fetch: fetchClassroomMaterialPage, topicID: classroomMaterialTopicID,
+	})
 }
 
 type ClassroomMaterialsGetCmd struct {
@@ -277,35 +196,15 @@ type ClassroomMaterialsDeleteCmd struct {
 }
 
 func (c *ClassroomMaterialsDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
-	u := ui.FromContext(ctx)
-	courseID := strings.TrimSpace(c.CourseID)
-	materialID := strings.TrimSpace(c.MaterialID)
-	if courseID == "" {
-		return usage("empty courseId")
-	}
-	if materialID == "" {
-		return usage("empty materialId")
-	}
-
-	if err := dryRunAndConfirmDestructive(ctx, flags, "classroom.materials.delete", map[string]any{
-		"course_id":   courseID,
-		"material_id": materialID,
-	}, fmt.Sprintf("delete material %s from %s", materialID, courseID)); err != nil {
-		return err
-	}
-
-	_, svc, err := requireClassroomService(ctx, flags)
-	if err != nil {
-		return wrapClassroomError(err)
-	}
-
-	if _, err := svc.Courses.CourseWorkMaterials.Delete(courseID, materialID).Context(ctx).Do(); err != nil {
-		return wrapClassroomError(err)
-	}
-
-	return writeResult(ctx, u,
-		kv("deleted", true),
-		kv("courseId", courseID),
-		kv("materialId", materialID),
-	)
+	return runClassroomDelete(ctx, flags, c.CourseID, c.MaterialID, classroomDeleteOperation{
+		op: "classroom.materials.delete", parentName: "courseId", parentPayloadKey: "course_id", parentResultKey: "courseId",
+		childName: "materialId", childPayloadKey: "material_id", childResultKey: "materialId", successResultKey: "deleted",
+		action: func(courseID, materialID string) string {
+			return fmt.Sprintf("delete material %s from %s", materialID, courseID)
+		},
+		delete: func(svc *classroom.Service, courseID, materialID string) error {
+			_, err := svc.Courses.CourseWorkMaterials.Delete(courseID, materialID).Context(ctx).Do()
+			return err
+		},
+	})
 }
