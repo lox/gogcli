@@ -426,6 +426,10 @@ func removeTokensForClient(ctx context.Context, client string, emails []string) 
 		}
 		removed = append(removed, email)
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return removed, err
+	}
+
 	sort.Strings(removed)
 	return removed, nil
 }

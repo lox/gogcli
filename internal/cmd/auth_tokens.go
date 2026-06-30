@@ -106,6 +106,10 @@ func (c *AuthTokensDeleteCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if err := store.DeleteToken(client, email); err != nil {
 		return err
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
+
 	return writeResult(ctx, u,
 		kv("deleted", true),
 		kv("email", email),

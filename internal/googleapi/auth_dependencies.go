@@ -33,6 +33,7 @@ type AuthDependencies struct {
 	OpenTokens                authclient.SecretsStoreOpener
 	ServiceAccounts           ServiceAccountStoreResolver
 	UpdateEmailReferences     googleauth.EmailReferenceUpdater
+	AccessTokenCacheDir       string
 	Mode                      AuthMode
 	ADCTokenSource            ADCTokenSourceFunc
 	ServiceAccountTokenSource ServiceAccountTokenSourceFunc

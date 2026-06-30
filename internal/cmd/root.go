@@ -234,12 +234,22 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	resolveClient := func(email string, override string) (string, error) {
 		return resolveRuntimeClient(runtime, email, override)
 	}
+	accessTokenCacheDir := ""
+	if cfgStore, cfgErr := cli.configStoreResolver(); cfgErr == nil {
+		if cfg, readErr := cfgStore.Read(); readErr == nil && cfg.AccessTokenCache {
+			if layoutErr := configureRuntimeLayout(runtime, config.PathKindState); layoutErr != nil {
+				return reportEarlyError(runtimeIO.Err, layoutErr)
+			}
+			accessTokenCacheDir = runtime.Layout.AccessTokenCacheDir()
+		}
+	}
 	authDependencies := googleapi.AuthDependencies{
 		ResolveClient:             resolveClient,
 		ReadCredentials:           readCredentials,
 		OpenTokens:                openTokens,
 		ServiceAccounts:           serviceAccounts,
 		UpdateEmailReferences:     updateEmailReferences,
+		AccessTokenCacheDir:       accessTokenCacheDir,
 		Mode:                      cli.authMode,
 		ADCTokenSource:            googleapi.DefaultADCTokenSource,
 		ServiceAccountTokenSource: googleapi.DefaultServiceAccountTokenSource,

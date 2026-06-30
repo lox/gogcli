@@ -228,6 +228,9 @@ func (c *AuthRemoveCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if deleteErr := store.DeleteToken(client, email); deleteErr != nil {
 		return deleteErr
 	}
+	if cacheErr := clearAccessTokenCache(ctx); cacheErr != nil {
+		return cacheErr
+	}
 
 	// Clean up config.json: remove aliases pointing to this email and the
 	// account-client entry for this email.
