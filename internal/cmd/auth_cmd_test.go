@@ -324,6 +324,104 @@ func TestAuthStatus_Text_ConfigFile(t *testing.T) {
 	}
 }
 
+func TestEnsureKeychainAccessSkippedForOnePasswordBackend(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GOG_KEYRING_BACKEND", secrets.KeyringBackendOnePassword)
+
+	ctx := withTestRuntime(context.Background(), func(runtime *app.Runtime) {
+		runtime.Auth.EnsureKeychainAccess = func(context.Context) error {
+			return errors.New("should not call keychain")
+		}
+	})
+
+	if err := ensureKeychainAccessIfNeeded(ctx); err != nil {
+		t.Fatalf("ensureKeychainAccessIfNeeded: %v", err)
+	}
+}
+
+func TestAddOnePasswordEnvChecks(t *testing.T) {
+	t.Setenv(secrets.OnePasswordVaultEnv, "")
+	t.Setenv(secrets.OnePasswordAuthEnv, "")
+	t.Setenv(secrets.OnePasswordAccountEnv, "")
+	t.Setenv(secrets.OnePasswordServiceAccountEnv, "")
+	t.Setenv(secrets.OnePasswordOperationTimeoutEnv, "nope")
+
+	var checks []authDoctorCheck
+	addOnePasswordEnvChecks(func(name string, status string, detail string, hint string) {
+		checks = append(checks, authDoctorCheck{Name: name, Status: status, Detail: detail, Hint: hint})
+	}, config.File{})
+
+	got := make(map[string]string)
+	for _, check := range checks {
+		got[check.Name] = check.Status
+	}
+
+	if got["keyring.1password.vault"] != doctorError {
+		t.Fatalf("expected vault error, got %#v", got)
+	}
+	if got["keyring.1password.auth"] != doctorError {
+		t.Fatalf("expected auth error, got %#v", got)
+	}
+	if got["keyring.1password.timeout"] != doctorError {
+		t.Fatalf("expected timeout error, got %#v", got)
+	}
+}
+
+func TestAddOnePasswordEnvChecks_Desktop(t *testing.T) {
+	t.Setenv(secrets.OnePasswordVaultEnv, "vault")
+	t.Setenv(secrets.OnePasswordAuthEnv, "desktop")
+	t.Setenv(secrets.OnePasswordAccountEnv, "example-account")
+	t.Setenv(secrets.OnePasswordServiceAccountEnv, "")
+	t.Setenv(secrets.OnePasswordOperationTimeoutEnv, "")
+
+	var checks []authDoctorCheck
+	addOnePasswordEnvChecks(func(name string, status string, detail string, hint string) {
+		checks = append(checks, authDoctorCheck{Name: name, Status: status, Detail: detail, Hint: hint})
+	}, config.File{})
+
+	got := make(map[string]string)
+	for _, check := range checks {
+		got[check.Name] = check.Status
+	}
+
+	if got["keyring.1password.vault"] != doctorOK {
+		t.Fatalf("expected vault ok, got %#v", got)
+	}
+	if got["keyring.1password.account"] != doctorOK {
+		t.Fatalf("expected account ok, got %#v", got)
+	}
+}
+
+func TestAddOnePasswordEnvChecks_ConfigDesktop(t *testing.T) {
+	t.Setenv(secrets.OnePasswordVaultEnv, "")
+	t.Setenv(secrets.OnePasswordAuthEnv, "")
+	t.Setenv(secrets.OnePasswordAccountEnv, "")
+	t.Setenv(secrets.OnePasswordServiceAccountEnv, "")
+	t.Setenv(secrets.OnePasswordOperationTimeoutEnv, "")
+
+	var checks []authDoctorCheck
+	addOnePasswordEnvChecks(func(name string, status string, detail string, hint string) {
+		checks = append(checks, authDoctorCheck{Name: name, Status: status, Detail: detail, Hint: hint})
+	}, config.File{
+		OnePasswordAuth:    "desktop",
+		OnePasswordAccount: "config-account",
+		OnePasswordVault:   "config-vault",
+	})
+
+	got := make(map[string]string)
+	for _, check := range checks {
+		got[check.Name] = check.Status
+	}
+
+	if got["keyring.1password.vault"] != doctorOK {
+		t.Fatalf("expected vault ok, got %#v", got)
+	}
+	if got["keyring.1password.account"] != doctorOK {
+		t.Fatalf("expected account ok, got %#v", got)
+	}
+}
+
 type errorTokenStore struct {
 	keys      []string
 	err       error
@@ -783,5 +881,30 @@ func TestAuthRemove_CleansUpConfig(t *testing.T) {
 	}
 	if v, ok := updated.AccountClients["other@example.com"]; !ok || v != "default" {
 		t.Fatalf("expected account_clients entry for other@example.com to be preserved, got: %v", updated.AccountClients)
+	}
+}
+
+func TestAuthRemoveClearsAccessTokenCache(t *testing.T) {
+	home := t.TempDir()
+	cacheDir := filepath.Join(home, "state", "access-token-cache")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir cache: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "cached.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	store := newMemSecretsStore()
+	if err := store.SetToken(config.DefaultClientName, "remove@example.com", secrets.Token{RefreshToken: "rt"}); err != nil {
+		t.Fatalf("SetToken: %v", err)
+	}
+
+	result := executeWithTestRuntime(t, []string{"--home", home, "--json", "--force", "auth", "remove", "remove@example.com"}, runtimeWithAuthStore(store))
+	if result.err != nil {
+		t.Fatalf("Execute remove: %v\nstderr=%s", result.err, result.stderr)
+	}
+
+	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
+		t.Fatalf("expected access token cache to be removed, stat err=%v", err)
 	}
 }

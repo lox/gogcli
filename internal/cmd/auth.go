@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -17,6 +18,15 @@ func openAuthSecretsStore(ctx context.Context) (secrets.Store, error) {
 		return runtime.Auth.OpenSecretsStore()
 	}
 	return nil, errRuntimeRequired
+}
+
+func clearAccessTokenCache(ctx context.Context) error {
+	layout, err := commandLayout(ctx, config.PathKindState)
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(layout.AccessTokenCacheDir())
 }
 
 func authorizeGoogleAccount(ctx context.Context, opts googleauth.AuthorizeOptions) (string, error) {
@@ -63,7 +73,7 @@ func ensureKeychainAccessIfNeeded(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolve keyring backend: %w", err)
 	}
-	if backendInfo.Value == strFile {
+	if backendInfo.Value == strFile || backendInfo.Value == secrets.KeyringBackendOnePassword {
 		return nil
 	}
 	if runtime, ok := app.FromContext(ctx); ok && runtime.Auth.EnsureKeychainAccess != nil {

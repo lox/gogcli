@@ -11,11 +11,17 @@ import (
 type Key string
 
 const (
-	KeyTimezone       Key = "timezone"
-	KeyKeyringBackend Key = "keyring_backend"
-	KeyGmailNoSend    Key = "gmail_no_send"
-	KeyYoutubeAPIKey  Key = "youtube_api_key"
-	KeyPlacesAPIKey   Key = "places_api_key"
+	KeyTimezone             Key = "timezone"
+	KeyKeyringBackend       Key = "keyring_backend"
+	KeyOnePasswordAuth      Key = "onepassword_auth"
+	KeyOnePasswordAccount   Key = "onepassword_account"
+	KeyOnePasswordVault     Key = "onepassword_vault"
+	KeyOnePasswordItemTitle Key = "onepassword_item_title"
+	KeyOnePasswordTimeout   Key = "onepassword_timeout"
+	KeyAccessTokenCache     Key = "access_token_cache"
+	KeyGmailNoSend          Key = "gmail_no_send"
+	KeyYoutubeAPIKey        Key = "youtube_api_key"
+	KeyPlacesAPIKey         Key = "places_api_key"
 )
 
 type KeySpec struct {
@@ -29,6 +35,12 @@ type KeySpec struct {
 var keyOrder = []Key{
 	KeyTimezone,
 	KeyKeyringBackend,
+	KeyOnePasswordAuth,
+	KeyOnePasswordAccount,
+	KeyOnePasswordVault,
+	KeyOnePasswordItemTitle,
+	KeyOnePasswordTimeout,
+	KeyAccessTokenCache,
 	KeyGmailNoSend,
 	KeyYoutubeAPIKey,
 	KeyPlacesAPIKey,
@@ -70,6 +82,117 @@ var keySpecs = map[Key]KeySpec{
 		},
 		EmptyHint: func() string {
 			return "(not set, using auto)"
+		},
+	},
+	KeyOnePasswordAuth: {
+		Key: KeyOnePasswordAuth,
+		Get: func(cfg File) string {
+			return cfg.OnePasswordAuth
+		},
+		Set: func(cfg *File, value string) error {
+			cfg.OnePasswordAuth = value
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.OnePasswordAuth = ""
+		},
+		EmptyHint: func() string {
+			return "(not set, using auto)"
+		},
+	},
+	KeyOnePasswordAccount: {
+		Key: KeyOnePasswordAccount,
+		Get: func(cfg File) string {
+			return cfg.OnePasswordAccount
+		},
+		Set: func(cfg *File, value string) error {
+			cfg.OnePasswordAccount = value
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.OnePasswordAccount = ""
+		},
+		EmptyHint: func() string {
+			return "(not set)"
+		},
+	},
+	KeyOnePasswordVault: {
+		Key: KeyOnePasswordVault,
+		Get: func(cfg File) string {
+			return cfg.OnePasswordVault
+		},
+		Set: func(cfg *File, value string) error {
+			cfg.OnePasswordVault = value
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.OnePasswordVault = ""
+		},
+		EmptyHint: func() string {
+			return "(not set)"
+		},
+	},
+	KeyOnePasswordItemTitle: {
+		Key: KeyOnePasswordItemTitle,
+		Get: func(cfg File) string {
+			return cfg.OnePasswordItemTitle
+		},
+		Set: func(cfg *File, value string) error {
+			cfg.OnePasswordItemTitle = value
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.OnePasswordItemTitle = ""
+		},
+		EmptyHint: func() string {
+			return "(not set, using gogcli-keyring)"
+		},
+	},
+	KeyOnePasswordTimeout: {
+		Key: KeyOnePasswordTimeout,
+		Get: func(cfg File) string {
+			return cfg.OnePasswordTimeout
+		},
+		Set: func(cfg *File, value string) error {
+			timeout, err := time.ParseDuration(value)
+			if err != nil {
+				return fmt.Errorf("%w: %q: %w (use a duration like 10s)", errInvalidOnePasswordTimeout, value, err)
+			}
+
+			if timeout <= 0 {
+				return fmt.Errorf("%w: %q must be positive (use a duration like 10s)", errInvalidOnePasswordTimeout, value)
+			}
+
+			cfg.OnePasswordTimeout = value
+
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.OnePasswordTimeout = ""
+		},
+		EmptyHint: func() string {
+			return "(not set, using 10s)"
+		},
+	},
+	KeyAccessTokenCache: {
+		Key: KeyAccessTokenCache,
+		Get: func(cfg File) string {
+			return boolConfigString(cfg.AccessTokenCache)
+		},
+		Set: func(cfg *File, value string) error {
+			parsed, err := parseConfigBool(value)
+			if err != nil {
+				return err
+			}
+			cfg.AccessTokenCache = parsed
+
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.AccessTokenCache = false
+		},
+		EmptyHint: func() string {
+			return boolConfigString(false)
 		},
 	},
 	KeyGmailNoSend: {
@@ -140,10 +263,11 @@ var keySpecs = map[Key]KeySpec{
 }
 
 var (
-	errUnknownConfigKey     = errors.New("unknown config key")
-	errConfigKeyCannotSet   = errors.New("config key cannot be set")
-	errConfigKeyCannotUnset = errors.New("config key cannot be unset")
-	errInvalidConfigBool    = errors.New("invalid boolean")
+	errUnknownConfigKey          = errors.New("unknown config key")
+	errConfigKeyCannotSet        = errors.New("config key cannot be set")
+	errConfigKeyCannotUnset      = errors.New("config key cannot be unset")
+	errInvalidConfigBool         = errors.New("invalid boolean")
+	errInvalidOnePasswordTimeout = errors.New("invalid onepassword_timeout")
 )
 
 func (k Key) String() string {

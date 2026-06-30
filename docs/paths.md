@@ -36,7 +36,8 @@ Per-kind overrides are literal directories. For example,
 
 - Config: `config.json`, config locks, and backup configuration.
 - Data: OAuth client metadata, file-keyring entries, and service-account keys.
-- State: Gmail watch cursors and email tracking state.
+- State: Gmail watch cursors, email tracking state, and opt-in short-lived
+  access-token cache files.
 - Cache: Gmail backup intermediate cache.
 - Downloads: unchanged by the XDG/GOG split. Drive downloads and Gmail
   attachments keep their existing default directory unless the command's
