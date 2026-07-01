@@ -16,6 +16,10 @@ func (l Layout) BatchDir() string {
 	return filepath.Join(l.StateDir, "batches")
 }
 
+func (l Layout) AccessTokenCacheDir() string {
+	return filepath.Join(l.StateDir, "access-token-cache")
+}
+
 func (l Layout) PrimaryKeyringDir() string {
 	return filepath.Join(l.DataDir, "keyring")
 }

@@ -18,6 +18,7 @@ const (
 	KeyOnePasswordVault     Key = "onepassword_vault"
 	KeyOnePasswordItemTitle Key = "onepassword_item_title"
 	KeyOnePasswordTimeout   Key = "onepassword_timeout"
+	KeyAccessTokenCache     Key = "access_token_cache"
 	KeyGmailNoSend          Key = "gmail_no_send"
 	KeyYoutubeAPIKey        Key = "youtube_api_key"
 	KeyPlacesAPIKey         Key = "places_api_key"
@@ -39,6 +40,7 @@ var keyOrder = []Key{
 	KeyOnePasswordVault,
 	KeyOnePasswordItemTitle,
 	KeyOnePasswordTimeout,
+	KeyAccessTokenCache,
 	KeyGmailNoSend,
 	KeyYoutubeAPIKey,
 	KeyPlacesAPIKey,
@@ -170,6 +172,27 @@ var keySpecs = map[Key]KeySpec{
 		},
 		EmptyHint: func() string {
 			return "(not set, using 10s)"
+		},
+	},
+	KeyAccessTokenCache: {
+		Key: KeyAccessTokenCache,
+		Get: func(cfg File) string {
+			return boolConfigString(cfg.AccessTokenCache)
+		},
+		Set: func(cfg *File, value string) error {
+			parsed, err := parseConfigBool(value)
+			if err != nil {
+				return err
+			}
+			cfg.AccessTokenCache = parsed
+
+			return nil
+		},
+		Unset: func(cfg *File) {
+			cfg.AccessTokenCache = false
+		},
+		EmptyHint: func() string {
+			return boolConfigString(false)
 		},
 	},
 	KeyGmailNoSend: {

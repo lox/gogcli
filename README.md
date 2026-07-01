@@ -689,6 +689,14 @@ gog auth list --check
 
 The equivalent `GOG_1PASSWORD_*` environment variables override config values.
 `OP_SERVICE_ACCOUNT_TOKEN` is always read from the environment, not config.
+For agent loops that spawn many short-lived `gog` processes, opt in to the
+short-lived access-token cache to avoid repeated 1Password desktop approvals:
+
+```bash
+gog config set access_token_cache true
+```
+
+Removing stored auth also clears this cache.
 
 The 1Password backend stores each gog keyring entry as an API Credential item
 titled `gogcli-keyring`. The item `username` field stores the gog keyring key,
