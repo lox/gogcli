@@ -201,6 +201,74 @@ func TestTokenSourceForAccountScopes_OtherGetError(t *testing.T) {
 	}
 }
 
+func TestTokenSourceForAccountScopes_UsesAccessTokenCacheBeforeStore(t *testing.T) {
+	cacheDir := t.TempDir()
+	scopes := []string{"s1"}
+
+	expires := time.Now().Add(time.Hour)
+	if err := writeAccessTokenCache(cacheDir, "default", "a@b.com", scopes, &oauth2.Token{
+		AccessToken: "cached-access",
+		Expiry:      expires,
+	}); err != nil {
+		t.Fatalf("writeAccessTokenCache: %v", err)
+	}
+
+	dependencies := tokenTestDependencies(func() (secrets.Store, error) {
+		t.Fatal("token store should not open on cache hit")
+		return nil, errBoom
+	})
+	dependencies.AccessTokenCacheDir = cacheDir
+
+	ts, err := tokenSourceForAccountScopesWithStoredScopeCheck(context.Background(), dependencies, "svc", "a@b.com", "default", "id", "secret", scopes, false)
+	if err != nil {
+		t.Fatalf("tokenSourceForAccountScopes: %v", err)
+	}
+
+	tok, err := ts.Token()
+	if err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+
+	if tok.AccessToken != "cached-access" {
+		t.Fatalf("access token = %q, want cached-access", tok.AccessToken)
+	}
+}
+
+func TestTokenSourceForAccountScopes_WritesAccessTokenCache(t *testing.T) {
+	cacheDir := t.TempDir()
+	scopes := []string{"s1"}
+
+	expires := time.Now().Add(time.Hour)
+	store := &stubStore{tok: secrets.Token{
+		Email:                "a@b.com",
+		RefreshToken:         "rt",
+		AccessToken:          "fresh-access",
+		AccessTokenExpiresAt: expires,
+	}}
+	dependencies := tokenTestDependencies(func() (secrets.Store, error) {
+		return store, nil
+	})
+	dependencies.AccessTokenCacheDir = cacheDir
+
+	ts, err := tokenSourceForAccountScopesWithStoredScopeCheck(context.Background(), dependencies, "svc", "a@b.com", "default", "id", "secret", scopes, false)
+	if err != nil {
+		t.Fatalf("tokenSourceForAccountScopes: %v", err)
+	}
+
+	if _, tokenErr := ts.Token(); tokenErr != nil {
+		t.Fatalf("Token: %v", tokenErr)
+	}
+
+	entry, err := readAccessTokenCache(cacheDir, "default", "a@b.com", scopes)
+	if err != nil {
+		t.Fatalf("readAccessTokenCache: %v", err)
+	}
+
+	if entry.AccessToken != "fresh-access" || !entry.Expiry.Equal(expires) {
+		t.Fatalf("unexpected cache entry: %#v", entry)
+	}
+}
+
 func TestTokenSourceForAccountScopes_HappyPath(t *testing.T) {
 	s := &stubStore{tok: secrets.Token{Email: "a@b.com", RefreshToken: "rt"}}
 	dependencies := tokenTestDependencies(func() (secrets.Store, error) { return s, nil })
