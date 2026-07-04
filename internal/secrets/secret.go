@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 )
 
 var errMissingSecretKey = errors.New("missing secret key")
@@ -17,7 +17,7 @@ func (s *KeyringStore) SetSecret(key string, value []byte) error {
 	}
 
 	if err := s.withWriteLock(func() error {
-		return verifiedSet(s.ring, key, value, "secret")
+		return verifiedSet(s.context(), s.ring, key, value, "secret")
 	}); err != nil {
 		return wrapKeychainError(fmt.Errorf("store secret: %w", err))
 	}
@@ -36,7 +36,7 @@ func (s *KeyringStore) GetSecret(key string) ([]byte, error) {
 	if err := s.withReadLock(func() error {
 		var getErr error
 
-		item, getErr = s.ring.Get(key)
+		item, getErr = s.ring.Get(s.context(), key)
 		if getErr != nil {
 			return fmt.Errorf("get secret: %w", getErr)
 		}
@@ -56,7 +56,7 @@ func (s *KeyringStore) DeleteSecret(key string) error {
 	}
 
 	if err := s.withWriteLock(func() error {
-		if removeErr := s.ring.Remove(key); removeErr != nil {
+		if removeErr := s.ring.Remove(s.context(), key); removeErr != nil {
 			return fmt.Errorf("delete secret: %w", removeErr)
 		}
 

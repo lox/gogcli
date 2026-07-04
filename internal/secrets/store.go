@@ -2,11 +2,12 @@ package secrets
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -47,6 +48,10 @@ func keyringItem(key string, data []byte) keyring.Item {
 	}
 }
 
+func (s *KeyringStore) context() context.Context {
+	return context.Background()
+}
+
 func (s *KeyringStore) Keys() ([]string, error) {
 	var keys []string
 
@@ -64,7 +69,7 @@ func (s *KeyringStore) Keys() ([]string, error) {
 }
 
 func (s *KeyringStore) keysNoLock() ([]string, error) {
-	keys, err := s.ring.Keys()
+	keys, err := s.ring.Keys(s.context())
 	if err != nil {
 		return nil, fmt.Errorf("list keyring keys: %w", err)
 	}
@@ -104,12 +109,12 @@ func (s *KeyringStore) withWriteLock(fn func() error) error {
 	return s.lock.withWriteLock(fn)
 }
 
-func verifiedSet(ring keyring.Keyring, key string, data []byte, label string) error {
-	if err := ring.Set(keyringItem(key, data)); err != nil {
+func verifiedSet(ctx context.Context, ring keyring.Keyring, key string, data []byte, label string) error {
+	if err := ring.Set(ctx, keyringItem(key, data)); err != nil {
 		return fmt.Errorf("set %s: %w", label, err)
 	}
 
-	item, err := ring.Get(key)
+	item, err := ring.Get(ctx, key)
 	if err != nil {
 		return fmt.Errorf("%w: could not read back %s after write: %w\n\n"+
 			"Workaround: switch to file-based keyring with: gog auth keyring file", errTokenVerifyFailed, label, err)
@@ -129,17 +134,17 @@ func verifiedSet(ring keyring.Keyring, key string, data []byte, label string) er
 	return nil
 }
 
-func verifiedSetAlias(ring keyring.Keyring, key string, data []byte, label string) error {
-	if err := verifiedSet(ring, key, data, label); err != nil {
+func verifiedSetAlias(ctx context.Context, ring keyring.Keyring, key string, data []byte, label string) error {
+	if err := verifiedSet(ctx, ring, key, data, label); err != nil {
 		if !isDuplicateKeyringItemError(err) {
 			return err
 		}
 
-		if removeErr := ring.Remove(key); removeErr != nil && !errors.Is(removeErr, keyring.ErrKeyNotFound) {
+		if removeErr := ring.Remove(ctx, key); removeErr != nil && !errors.Is(removeErr, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("replace duplicate %s: remove stale item: %w", label, removeErr)
 		}
 
-		if retryErr := verifiedSet(ring, key, data, label); retryErr != nil {
+		if retryErr := verifiedSet(ctx, ring, key, data, label); retryErr != nil {
 			return fmt.Errorf("replace duplicate %s: %w", label, retryErr)
 		}
 	}

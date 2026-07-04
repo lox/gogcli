@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 	gapi "google.golang.org/api/googleapi"
 	"google.golang.org/api/people/v1"
 

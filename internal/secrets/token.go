@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -91,24 +91,24 @@ func (s *KeyringStore) setTokenNoLock(client string, email string, tok Token) er
 	}
 
 	primaryKey := tokenKey(normalizedClient, email)
-	if err := verifiedSet(s.ring, primaryKey, payload, "token"); err != nil {
+	if err := verifiedSet(s.context(), s.ring, primaryKey, payload, "token"); err != nil {
 		return wrapKeychainError(fmt.Errorf("store token: %w", err))
 	}
 
 	if normalizedClient == config.DefaultClientName {
-		if err := verifiedSetAlias(s.ring, legacyTokenKey(email), payload, "legacy token"); err != nil {
+		if err := verifiedSetAlias(s.context(), s.ring, legacyTokenKey(email), payload, "legacy token"); err != nil {
 			return wrapKeychainError(fmt.Errorf("store legacy token: %w", err))
 		}
 	}
 
 	if tok.Subject != "" {
-		if err := verifiedSetAlias(s.ring, subjectTokenKey(normalizedClient, tok.Subject), payload, "subject token"); err != nil {
+		if err := verifiedSetAlias(s.context(), s.ring, subjectTokenKey(normalizedClient, tok.Subject), payload, "subject token"); err != nil {
 			return wrapKeychainError(fmt.Errorf("store subject token: %w", err))
 		}
 	}
 
 	if oldSubject != "" && oldSubject != tok.Subject {
-		if err := s.ring.Remove(subjectTokenKey(normalizedClient, oldSubject)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		if err := s.ring.Remove(s.context(), subjectTokenKey(normalizedClient, oldSubject)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("delete stale subject token: %w", err)
 		}
 	}
@@ -166,13 +166,13 @@ func (s *KeyringStore) getTokenNoLockOptions(client string, email string, migrat
 
 	primaryKey := tokenKey(normalizedClient, email)
 
-	item, err := s.ring.Get(primaryKey)
+	item, err := s.ring.Get(s.context(), primaryKey)
 	if err != nil {
 		if normalizedClient != config.DefaultClientName || !errors.Is(err, keyring.ErrKeyNotFound) {
 			return Token{}, fmt.Errorf("read token: %w", err)
 		}
 
-		legacyItem, legacyErr := s.ring.Get(legacyTokenKey(email))
+		legacyItem, legacyErr := s.ring.Get(s.context(), legacyTokenKey(email))
 		if legacyErr != nil {
 			if !errors.Is(legacyErr, keyring.ErrKeyNotFound) {
 				return Token{}, fmt.Errorf("read legacy token: %w", legacyErr)
@@ -183,7 +183,7 @@ func (s *KeyringStore) getTokenNoLockOptions(client string, email string, migrat
 
 		item = legacyItem
 		if migrateLegacy {
-			if migrateErr := verifiedSet(s.ring, primaryKey, legacyItem.Data, "migrated token"); migrateErr != nil {
+			if migrateErr := verifiedSet(s.context(), s.ring, primaryKey, legacyItem.Data, "migrated token"); migrateErr != nil {
 				return Token{}, wrapKeychainError(fmt.Errorf("migrate token: %w", migrateErr))
 			}
 		}
@@ -229,18 +229,18 @@ func (s *KeyringStore) deleteTokenNoLock(client string, email string) error {
 		subject = strings.TrimSpace(tok.Subject)
 	}
 
-	if err := s.ring.Remove(tokenKey(normalizedClient, email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+	if err := s.ring.Remove(s.context(), tokenKey(normalizedClient, email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 		return fmt.Errorf("delete token: %w", err)
 	}
 
 	if normalizedClient == config.DefaultClientName {
-		if err := s.ring.Remove(legacyTokenKey(email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		if err := s.ring.Remove(s.context(), legacyTokenKey(email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("delete legacy token: %w", err)
 		}
 	}
 
 	if subject != "" {
-		if err := s.ring.Remove(subjectTokenKey(normalizedClient, subject)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		if err := s.ring.Remove(s.context(), subjectTokenKey(normalizedClient, subject)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("delete subject token: %w", err)
 		}
 	}
@@ -267,12 +267,12 @@ func (s *KeyringStore) deleteTokenAliasNoLock(client string, email string) error
 		return err
 	}
 
-	if err := s.ring.Remove(tokenKey(normalizedClient, email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+	if err := s.ring.Remove(s.context(), tokenKey(normalizedClient, email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 		return fmt.Errorf("delete token alias: %w", err)
 	}
 
 	if normalizedClient == config.DefaultClientName {
-		if err := s.ring.Remove(legacyTokenKey(email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		if err := s.ring.Remove(s.context(), legacyTokenKey(email)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("delete legacy token alias: %w", err)
 		}
 	}
@@ -429,7 +429,7 @@ func (s *KeyringStore) getTokenBySubjectNoLock(client string, subject string) (T
 		return Token{}, errMissingEmail
 	}
 
-	item, err := s.ring.Get(subjectTokenKey(normalizedClient, subject))
+	item, err := s.ring.Get(s.context(), subjectTokenKey(normalizedClient, subject))
 	if err != nil {
 		return Token{}, fmt.Errorf("read token: %w", err)
 	}

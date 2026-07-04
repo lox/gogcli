@@ -105,7 +105,7 @@ Implementation: `internal/config/*`.
 
 ### Refresh tokens (secrets)
 
-- Stored in OS credential store via `github.com/99designs/keyring`.
+- Stored in OS credential store via `github.com/lox/keyring/v2`.
 - Key namespace is `gogcli` by default (keyring `ServiceName`); override with `GOG_KEYRING_SERVICE_NAME`.
 - Key format: `token:<client>:<email>` (default client uses `token:default:<email>`)
 - Canonical identity key format for new tokens with an OIDC subject: `token-sub:<client>:<sub>`. Email-keyed entries remain as compatibility lookup keys.
@@ -167,7 +167,7 @@ Environment:
 - `GOG_ACCOUNT=you@gmail.com` (email or alias; used when `--account` is not set; otherwise uses keyring default or a single stored token)
 - `GOG_CLIENT=work` (select OAuth client bucket; see `--client`)
 - `GOG_KEYRING_PASSWORD=...` (used when keyring falls back to encrypted file backend in non-interactive environments)
-- `GOG_KEYRING_BACKEND={auto|keychain|file}` (force backend; use `file` to avoid Keychain prompts and pair with `GOG_KEYRING_PASSWORD` for non-interactive)
+- `GOG_KEYRING_BACKEND={auto|keychain|1password|file}` (force backend; use `file` to avoid Keychain prompts and pair with `GOG_KEYRING_PASSWORD` for non-interactive)
 - `GOG_KEYRING_SERVICE_NAME=...` (override keyring namespace/service name; default `gogcli`)
 - `GOG_KEYRING_OPEN_TIMEOUT=30s` (max time to wait for a keyring open/operation — e.g. a macOS Keychain permission prompt — before failing; Go duration, default `30s` on macOS and `10s` elsewhere)
 - `GOG_TIMEZONE=America/New_York` (default output timezone; IANA name or `UTC`; `local` forces local timezone)

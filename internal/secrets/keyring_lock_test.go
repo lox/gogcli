@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -22,7 +22,7 @@ func TestKeyringLockForRingInDirUsesInjectedDirectory(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	ring := newFileSafeKeyring(keyring.NewArrayKeyring(nil))
+	ring := newLegacyFileKeyring(keyring.NewArrayKeyring(nil))
 
 	lock, ok, err := keyringLockForRingInDir(ring, dir, 2*time.Second)
 	if err != nil {
@@ -35,6 +35,15 @@ func TestKeyringLockForRingInDirUsesInjectedDirectory(t *testing.T) {
 
 	if want := filepath.Join(dir, keyringLockFilename); lock.path != want {
 		t.Fatalf("lock path = %q, want %q", lock.path, want)
+	}
+}
+
+func TestKeyringLockDetectsTimeoutWrappedFileRing(t *testing.T) {
+	t.Parallel()
+
+	ring := keyring.Timeout(newLegacyFileKeyring(keyring.NewArrayKeyring(nil)), time.Second)
+	if !isFileBackedKeyring(ring) {
+		t.Fatal("expected timeout-wrapped file ring to be file-backed")
 	}
 }
 

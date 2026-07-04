@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/99designs/keyring"
 	"github.com/alecthomas/kong"
+	"github.com/lox/keyring/v2"
 	ggoogleapi "google.golang.org/api/googleapi"
 
 	"github.com/steipete/gogcli/internal/config"

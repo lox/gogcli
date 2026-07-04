@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -38,7 +38,7 @@ func (s *KeyringStore) getDefaultAccountNoLock(client string) (string, error) {
 	}
 
 	if normalizedClient == config.DefaultClientName {
-		if it, getErr := s.ring.Get(defaultAccountKeyForClient(normalizedClient)); getErr == nil {
+		if it, getErr := s.ring.Get(s.context(), defaultAccountKeyForClient(normalizedClient)); getErr == nil {
 			return string(it.Data), nil
 		} else if !errors.Is(getErr, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("read default account: %w", getErr)
@@ -46,7 +46,7 @@ func (s *KeyringStore) getDefaultAccountNoLock(client string) (string, error) {
 	}
 
 	if normalizedClient != config.DefaultClientName {
-		if it, getErr := s.ring.Get(defaultAccountKeyForClient(normalizedClient)); getErr == nil {
+		if it, getErr := s.ring.Get(s.context(), defaultAccountKeyForClient(normalizedClient)); getErr == nil {
 			return string(it.Data), nil
 		} else if !errors.Is(getErr, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("read default account: %w", getErr)
@@ -55,7 +55,7 @@ func (s *KeyringStore) getDefaultAccountNoLock(client string) (string, error) {
 		return "", nil
 	}
 
-	it, err := s.ring.Get(defaultAccountKey)
+	it, err := s.ring.Get(s.context(), defaultAccountKey)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", nil
@@ -85,18 +85,18 @@ func (s *KeyringStore) setDefaultAccountNoLock(client string, email string) erro
 	}
 
 	if normalizedClient != config.DefaultClientName {
-		if err := verifiedSet(s.ring, defaultAccountKeyForClient(normalizedClient), []byte(email), "default account"); err != nil {
+		if err := verifiedSet(s.context(), s.ring, defaultAccountKeyForClient(normalizedClient), []byte(email), "default account"); err != nil {
 			return fmt.Errorf("store default account: %w", err)
 		}
 
 		return nil
 	}
 
-	if err := verifiedSet(s.ring, defaultAccountKeyForClient(normalizedClient), []byte(email), "default account"); err != nil {
+	if err := verifiedSet(s.context(), s.ring, defaultAccountKeyForClient(normalizedClient), []byte(email), "default account"); err != nil {
 		return fmt.Errorf("store default account: %w", err)
 	}
 
-	if err := verifiedSet(s.ring, defaultAccountKey, []byte(email), "legacy default account"); err != nil {
+	if err := verifiedSet(s.context(), s.ring, defaultAccountKey, []byte(email), "legacy default account"); err != nil {
 		return fmt.Errorf("store default account: %w", err)
 	}
 
@@ -116,18 +116,18 @@ func (s *KeyringStore) deleteDefaultAccountNoLock(client string) error {
 	}
 
 	if normalizedClient != config.DefaultClientName {
-		if err := s.ring.Remove(defaultAccountKeyForClient(normalizedClient)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		if err := s.ring.Remove(s.context(), defaultAccountKeyForClient(normalizedClient)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("delete default account: %w", err)
 		}
 
 		return nil
 	}
 
-	if err := s.ring.Remove(defaultAccountKeyForClient(normalizedClient)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+	if err := s.ring.Remove(s.context(), defaultAccountKeyForClient(normalizedClient)); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 		return fmt.Errorf("delete default account: %w", err)
 	}
 
-	if err := s.ring.Remove(defaultAccountKey); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+	if err := s.ring.Remove(s.context(), defaultAccountKey); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
 		return fmt.Errorf("delete default account: %w", err)
 	}
 

@@ -1,12 +1,10 @@
 package secrets
 
 import (
-	"errors"
+	"context"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/99designs/keyring"
 )
 
 func TestKeyringOperationTimeoutGuards(t *testing.T) {
@@ -56,53 +54,9 @@ func TestKeyringTimeoutHint(t *testing.T) {
 	}
 }
 
-func TestTimeoutKeyringTimesOutOperations(t *testing.T) {
-	block := make(chan struct{})
-
-	t.Cleanup(func() { close(block) })
-
-	ring := newTimeoutKeyring(&blockingKeyring{block: block}, 10*time.Millisecond, keyringTimeoutHint("darwin"))
-
-	_, err := ring.Keys()
-	if !errors.Is(err, errKeyringTimeout) {
-		t.Fatalf("expected timeout error, got %v", err)
+func TestIsKeyringTimeoutRecognizesOperationDeadline(t *testing.T) {
+	err := fmt.Errorf("list tokens: keyring list keys timed out after 10ms: %w", context.DeadlineExceeded)
+	if !IsKeyringTimeout(err) {
+		t.Fatalf("expected keyring timeout, got %v", err)
 	}
-
-	if !strings.Contains(err.Error(), "listing keyring items") || !strings.Contains(err.Error(), "Always Allow") ||
-		!strings.Contains(err.Error(), "GOG_KEYRING_OPEN_TIMEOUT") {
-		t.Fatalf("expected operation, macOS hint, and timeout env in error, got %v", err)
-	}
-}
-
-type blockingKeyring struct {
-	block <-chan struct{}
-}
-
-func (k *blockingKeyring) wait() {
-	<-k.block
-}
-
-func (k *blockingKeyring) Get(string) (keyring.Item, error) {
-	k.wait()
-	return keyring.Item{}, keyring.ErrKeyNotFound
-}
-
-func (k *blockingKeyring) GetMetadata(string) (keyring.Metadata, error) {
-	k.wait()
-	return keyring.Metadata{}, keyring.ErrKeyNotFound
-}
-
-func (k *blockingKeyring) Set(keyring.Item) error {
-	k.wait()
-	return nil
-}
-
-func (k *blockingKeyring) Remove(string) error {
-	k.wait()
-	return nil
-}
-
-func (k *blockingKeyring) Keys() ([]string, error) {
-	k.wait()
-	return nil, nil
 }

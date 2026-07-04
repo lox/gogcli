@@ -1,24 +1,20 @@
 package secrets
 
 import (
+	"context"
 	"errors"
-	"os"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
 
-var (
-	errInvalidTestFilename = errors.New("invalid filename")
-	errLegacyRemoveFailed  = errors.New("legacy remove failed")
-)
+var errLegacyRemoveFailed = errors.New("legacy remove failed")
 
-func TestFileSafeKeyRoundTrip(t *testing.T) {
+func TestLegacyFileSafeKeyRoundTrip(t *testing.T) {
 	keys := []string{
 		"token:default:user@example.com",
 		`token:work:user@example.com`,
@@ -28,7 +24,7 @@ func TestFileSafeKeyRoundTrip(t *testing.T) {
 	}
 
 	for _, key := range keys {
-		encoded := fileSafeKey(key)
+		encoded := legacyFileSafeKey(key)
 		if encoded == key {
 			t.Fatalf("expected encoded key for %q", key)
 		}
@@ -37,91 +33,32 @@ func TestFileSafeKeyRoundTrip(t *testing.T) {
 			t.Fatalf("encoded key %q still contains a Windows filename separator/reserved char", encoded)
 		}
 
-		if got := decodeFileSafeKey(encoded); got != key {
-			t.Fatalf("decodeFileSafeKey(%q)=%q, want %q", encoded, got, key)
+		if got := decodeLegacyFileSafeKey(encoded); got != key {
+			t.Fatalf("decodeLegacyFileSafeKey(%q)=%q, want %q", encoded, got, key)
 		}
 	}
 
 	rawPrefixKey := fileKeyPrefix + "dGVzdA"
-	if got := decodeFileSafeKey(rawPrefixKey); got != "test" {
+	if got := decodeLegacyFileSafeKey(rawPrefixKey); got != "test" {
 		t.Fatalf("expected canonical encoded key to decode, got %q", got)
 	}
 
-	if got := decodeFileSafeKey(fileKeyPrefix + "not valid"); got != fileKeyPrefix+"not valid" {
+	if got := decodeLegacyFileSafeKey(fileKeyPrefix + "not valid"); got != fileKeyPrefix+"not valid" {
 		t.Fatalf("expected invalid encoded key to remain raw, got %q", got)
 	}
 }
 
-func TestFileSafeKeyringRoundTripWithFileBackend(t *testing.T) {
-	dir := t.TempDir()
-
-	inner, err := keyring.Open(keyring.Config{
-		ServiceName:      config.AppName,
-		AllowedBackends:  []keyring.BackendType{keyring.FileBackend},
-		FileDir:          dir,
-		FilePasswordFunc: keyring.FixedStringPrompt("test-pass"),
-	})
-	if err != nil {
-		t.Fatalf("open file keyring: %v", err)
-	}
-
-	ring := newFileSafeKeyring(inner)
-	key := "token:default:user@example.com"
-
-	if setErr := ring.Set(keyring.Item{Key: key, Data: []byte("secret")}); setErr != nil {
-		t.Fatalf("Set: %v", setErr)
-	}
-
-	item, err := ring.Get(key)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-
-	if item.Key != key || string(item.Data) != "secret" {
-		t.Fatalf("unexpected item: key=%q data=%q", item.Key, item.Data)
-	}
-
-	keys, err := ring.Keys()
-	if err != nil {
-		t.Fatalf("Keys: %v", err)
-	}
-
-	if !slices.Contains(keys, key) {
-		t.Fatalf("expected decoded key %q in %v", key, keys)
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
-	}
-
-	if len(entries) != 1 {
-		t.Fatalf("expected one keyring file, got %d", len(entries))
-	}
-
-	if name := entries[0].Name(); strings.ContainsAny(name, `<>:"/\|?*`) {
-		t.Fatalf("keyring filename %q contains a Windows filename separator/reserved char", name)
-	}
-
-	if err := ring.Remove(key); err != nil {
-		t.Fatalf("Remove: %v", err)
-	}
-
-	if _, err := ring.Get(key); !errors.Is(err, keyring.ErrKeyNotFound) {
-		t.Fatalf("expected not found after remove, got %v", err)
-	}
-}
-
-func TestFileSafeKeyringReadsAndRemovesLegacyRawKeys(t *testing.T) {
+func TestLegacyFileKeyringReadsAndRemovesGogEncodedKeys(t *testing.T) {
+	ctx := context.Background()
 	inner := keyring.NewArrayKeyring(nil)
-	ring := newFileSafeKeyring(inner)
+	ring := newLegacyFileKeyring(inner)
 	key := "token:default:user@example.com"
 
-	if err := inner.Set(keyring.Item{Key: key, Data: []byte("legacy")}); err != nil {
+	if err := inner.Set(ctx, keyring.Item{Key: legacyFileSafeKey(key), Data: []byte("legacy")}); err != nil {
 		t.Fatalf("set legacy key: %v", err)
 	}
 
-	item, err := ring.Get(key)
+	item, err := ring.Get(ctx, key)
 	if err != nil {
 		t.Fatalf("Get legacy key: %v", err)
 	}
@@ -130,11 +67,11 @@ func TestFileSafeKeyringReadsAndRemovesLegacyRawKeys(t *testing.T) {
 		t.Fatalf("unexpected legacy item: key=%q data=%q", item.Key, item.Data)
 	}
 
-	if setErr := ring.Set(keyring.Item{Key: key, Data: []byte("new")}); setErr != nil {
-		t.Fatalf("Set encoded key: %v", setErr)
+	if setErr := ring.Set(ctx, keyring.Item{Key: key, Data: []byte("new")}); setErr != nil {
+		t.Fatalf("Set new key: %v", setErr)
 	}
 
-	keys, err := ring.Keys()
+	keys, err := ring.Keys(ctx)
 	if err != nil {
 		t.Fatalf("Keys: %v", err)
 	}
@@ -151,54 +88,43 @@ func TestFileSafeKeyringReadsAndRemovesLegacyRawKeys(t *testing.T) {
 		t.Fatalf("expected one decoded key in %v, got count %d", keys, got)
 	}
 
-	if err := ring.Remove(key); err != nil {
+	if err := ring.Remove(ctx, key); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	if _, err := inner.Get(key); !errors.Is(err, keyring.ErrKeyNotFound) {
-		t.Fatalf("expected legacy key removed, got %v", err)
+	if _, err := inner.Get(ctx, key); !errors.Is(err, keyring.ErrKeyNotFound) {
+		t.Fatalf("expected new key removed, got %v", err)
 	}
 
-	if _, err := inner.Get(fileSafeKey(key)); !errors.Is(err, keyring.ErrKeyNotFound) {
-		t.Fatalf("expected encoded key removed, got %v", err)
+	if _, err := inner.Get(ctx, legacyFileSafeKey(key)); !errors.Is(err, keyring.ErrKeyNotFound) {
+		t.Fatalf("expected legacy key removed, got %v", err)
 	}
 }
 
-func TestFileSafeKeyringRemoveReportsLegacyDeleteError(t *testing.T) {
+func TestLegacyFileKeyringRemoveReportsLegacyDeleteError(t *testing.T) {
+	ctx := context.Background()
 	key := "token:default:user@example.com"
-	ring := newFileSafeKeyring(&legacyRemoveErrorKeyring{
+	ring := newLegacyFileKeyring(&legacyRemoveErrorKeyring{
 		key: key,
 		items: map[string]keyring.Item{
-			fileSafeKey(key): {Key: fileSafeKey(key), Data: []byte("encoded")},
-			key:              {Key: key, Data: []byte("legacy")},
+			legacyFileSafeKey(key): {Key: legacyFileSafeKey(key), Data: []byte("legacy")},
+			key:                    {Key: key, Data: []byte("new")},
 		},
 		err: errLegacyRemoveFailed,
 	})
 
-	err := ring.Remove(key)
+	err := ring.Remove(ctx, key)
 	if !errors.Is(err, errLegacyRemoveFailed) {
 		t.Fatalf("expected legacy remove error, got %v", err)
 	}
 
-	item, getErr := ring.Get(key)
+	item, getErr := ring.Get(ctx, key)
 	if getErr != nil {
 		t.Fatalf("Get: %v", getErr)
 	}
 
 	if string(item.Data) != "legacy" {
 		t.Fatalf("expected legacy item still readable, got %q", string(item.Data))
-	}
-}
-
-func TestFileSafeKeyringTreatsInvalidLegacyFilenameAsNotFound(t *testing.T) {
-	orig := isInvalidFileKeyError
-	isInvalidFileKeyError = func(err error) bool { return errors.Is(err, errInvalidTestFilename) }
-
-	t.Cleanup(func() { isInvalidFileKeyError = orig })
-
-	ring := newFileSafeKeyring(&invalidFilenameKeyring{})
-	if _, err := ring.Get("token:default:user@example.com"); !errors.Is(err, keyring.ErrKeyNotFound) {
-		t.Fatalf("expected not found for invalid legacy filename, got %v", err)
 	}
 }
 
@@ -214,7 +140,7 @@ func TestOpenKeyringWrapsExplicitFileBackend(t *testing.T) {
 		Password:    "test-pass",
 		PasswordSet: true,
 		GOOS:        runtime.GOOS,
-		openKeyringFn: func(_ keyring.Config) (keyring.Keyring, error) {
+		openKeyringFn: func(context.Context, ...keyring.Option) (keyring.Keyring, error) {
 			return keyring.NewArrayKeyring(nil), nil
 		},
 	}
@@ -229,31 +155,9 @@ func TestOpenKeyringWrapsExplicitFileBackend(t *testing.T) {
 		t.Fatalf("expected *KeyringStore, got %T", store)
 	}
 
-	if _, ok := keyringStore.ring.(*fileSafeKeyring); !ok {
-		t.Fatalf("expected file-safe keyring, got %T", keyringStore.ring)
+	if _, ok := keyringStore.ring.(*legacyFileKeyring); !ok {
+		t.Fatalf("expected legacy file keyring, got %T", keyringStore.ring)
 	}
-}
-
-type invalidFilenameKeyring struct{}
-
-func (k *invalidFilenameKeyring) Get(string) (keyring.Item, error) {
-	return keyring.Item{}, errInvalidTestFilename
-}
-
-func (k *invalidFilenameKeyring) GetMetadata(string) (keyring.Metadata, error) {
-	return keyring.Metadata{}, errInvalidTestFilename
-}
-
-func (k *invalidFilenameKeyring) Set(keyring.Item) error {
-	return nil
-}
-
-func (k *invalidFilenameKeyring) Remove(string) error {
-	return errInvalidTestFilename
-}
-
-func (k *invalidFilenameKeyring) Keys() ([]string, error) {
-	return nil, nil
 }
 
 type legacyRemoveErrorKeyring struct {
@@ -262,7 +166,7 @@ type legacyRemoveErrorKeyring struct {
 	err   error
 }
 
-func (k *legacyRemoveErrorKeyring) Get(key string) (keyring.Item, error) {
+func (k *legacyRemoveErrorKeyring) Get(_ context.Context, key string) (keyring.Item, error) {
 	item, ok := k.items[key]
 	if !ok {
 		return keyring.Item{}, keyring.ErrKeyNotFound
@@ -271,7 +175,7 @@ func (k *legacyRemoveErrorKeyring) Get(key string) (keyring.Item, error) {
 	return item, nil
 }
 
-func (k *legacyRemoveErrorKeyring) GetMetadata(key string) (keyring.Metadata, error) {
+func (k *legacyRemoveErrorKeyring) Metadata(_ context.Context, key string) (keyring.Metadata, error) {
 	if _, ok := k.items[key]; !ok {
 		return keyring.Metadata{}, keyring.ErrKeyNotFound
 	}
@@ -279,13 +183,13 @@ func (k *legacyRemoveErrorKeyring) GetMetadata(key string) (keyring.Metadata, er
 	return keyring.Metadata{}, nil
 }
 
-func (k *legacyRemoveErrorKeyring) Set(item keyring.Item) error {
+func (k *legacyRemoveErrorKeyring) Set(_ context.Context, item keyring.Item) error {
 	k.items[item.Key] = item
 	return nil
 }
 
-func (k *legacyRemoveErrorKeyring) Remove(key string) error {
-	if key == k.key {
+func (k *legacyRemoveErrorKeyring) Remove(_ context.Context, key string) error {
+	if key == legacyFileSafeKey(k.key) {
 		return k.err
 	}
 
@@ -298,7 +202,7 @@ func (k *legacyRemoveErrorKeyring) Remove(key string) error {
 	return nil
 }
 
-func (k *legacyRemoveErrorKeyring) Keys() ([]string, error) {
+func (k *legacyRemoveErrorKeyring) Keys(context.Context) ([]string, error) {
 	keys := make([]string, 0, len(k.items))
 	for key := range k.items {
 		keys = append(keys, key)

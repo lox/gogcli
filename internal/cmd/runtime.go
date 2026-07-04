@@ -139,12 +139,16 @@ func normalizeRuntimeAuth(runtime *app.Runtime, defaults *app.Runtime) {
 }
 
 func openRuntimeSecretsRepository(runtime *app.Runtime) (secrets.Repository, error) {
+	return openRuntimeSecretsRepositoryContext(context.Background(), runtime)
+}
+
+func openRuntimeSecretsRepositoryContext(ctx context.Context, runtime *app.Runtime) (secrets.Repository, error) {
 	options, err := runtimeKeyringOpenOptions(runtime)
 	if err != nil {
 		return nil, err
 	}
 
-	return secrets.Open(options)
+	return secrets.OpenContext(ctx, options)
 }
 
 func runtimeKeyringOpenOptions(runtime *app.Runtime) (secrets.OpenOptions, error) {

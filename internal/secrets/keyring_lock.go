@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 )
 
 const (
@@ -75,10 +75,10 @@ func isFileBackedKeyring(ring keyring.Keyring) bool {
 	switch r := ring.(type) {
 	case nil:
 		return false
-	case *fileSafeKeyring:
+	case *legacyFileKeyring:
 		return true
-	case *timeoutKeyring:
-		return isFileBackedKeyring(r.inner)
+	case interface{ Unwrap() keyring.Keyring }:
+		return isFileBackedKeyring(r.Unwrap())
 	default:
 		return isFileKeyring(ring)
 	}

@@ -1,13 +1,16 @@
 package secrets
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
-	"github.com/99designs/keyring"
+	onepassword "github.com/lox/keyring-1password"
+	defaults "github.com/lox/keyring-defaults"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -43,7 +46,7 @@ type OpenOptions struct {
 	IsTTY         bool
 	OpenTimeout   time.Duration
 	LockTimeout   time.Duration
-	openKeyringFn func(keyring.Config) (keyring.Keyring, error)
+	openKeyringFn openKeyringFunc
 }
 
 const (
@@ -52,6 +55,7 @@ const (
 	keyringBackendSourceDefault = "default"
 	keyringBackendAuto          = "auto"
 	keyringBackendKeychain      = "keychain"
+	keyringBackend1Password     = "1password"
 )
 
 func OpenOptionsFromLookup(
@@ -110,16 +114,18 @@ func ResolveKeyringBackendInfoWithOptions(options OpenOptions) (KeyringBackendIn
 	return KeyringBackendInfo{Value: keyringBackendAuto, Source: keyringBackendSourceDefault}, nil
 }
 
-func allowedBackends(info KeyringBackendInfo) ([]keyring.BackendType, error) {
+func allowedBackends(info KeyringBackendInfo) ([]keyring.Backend, error) {
 	switch info.Value {
 	case "", keyringBackendAuto:
 		return nil, nil
 	case keyringBackendKeychain:
-		return []keyring.BackendType{keyring.KeychainBackend}, nil
+		return []keyring.Backend{keyring.KeychainBackend}, nil
+	case keyringBackend1Password:
+		return []keyring.Backend{onepassword.Backend}, nil
 	case "file":
-		return []keyring.BackendType{keyring.FileBackend}, nil
+		return []keyring.Backend{keyring.FileBackend}, nil
 	default:
-		return nil, fmt.Errorf("%w: %q (expected %s, keychain, or file)", errInvalidKeyringBackend, info.Value, keyringBackendAuto)
+		return nil, fmt.Errorf("%w: %q (expected %s, keychain, 1password, or file)", errInvalidKeyringBackend, info.Value, keyringBackendAuto)
 	}
 }
 
@@ -231,10 +237,40 @@ func isFileKeyring(ring keyring.Keyring) bool {
 	return reflect.TypeOf(ring).String() == "*keyring.fileKeyring"
 }
 
-func openKeyringWithOptions(options OpenOptions) (keyring.Keyring, error) {
+type openKeyringFunc func(context.Context, ...keyring.Option) (keyring.Keyring, error)
+
+func keyringProviders(keyringDir string, prompt keyring.PromptFunc) []keyring.Provider {
+	return defaults.Providers(
+		// Keep access tied to the service, not the exact binary hash, so tokens
+		// survive Homebrew upgrades.
+		defaults.KeychainTrustApplication(false),
+		onepassword.Provider(),
+		keyring.FileProvider(
+			keyring.FileDir(keyringDir),
+			keyring.FilePrompt(prompt),
+		),
+	)
+}
+
+func keyringOpenOptions(serviceName string, providers []keyring.Provider, backends []keyring.Backend) []keyring.Option {
+	opts := []keyring.Option{
+		keyring.WithServiceName(serviceName),
+		keyring.WithProviders(providers...),
+		// Match the old library's open behavior: try the next configured
+		// backend after a provider open failure.
+		keyring.WithFallbackPolicy(keyring.FallbackOnError),
+	}
+	if len(backends) > 0 {
+		opts = append(opts, keyring.WithBackends(backends...))
+	}
+
+	return opts
+}
+
+func openKeyringWithOptions(ctx context.Context, options OpenOptions) (keyring.Keyring, error) {
 	// On Linux/WSL/containers, OS keychains (secret-service/kwallet) may be unavailable.
-	// In that case github.com/99designs/keyring falls back to the "file" backend,
-	// which *requires* both a directory and a password prompt function.
+	// In that case force the file provider, which requires both a directory and
+	// a password prompt function.
 	keyringDir, err := options.Layout.EnsureKeyringDir()
 	if err != nil {
 		return nil, fmt.Errorf("ensure keyring dir: %w", err)
@@ -255,23 +291,15 @@ func openKeyringWithOptions(options OpenOptions) (keyring.Keyring, error) {
 	// Without DBUS_SESSION_BUS_ADDRESS, SecretService will hang indefinitely
 	// trying to connect (common on headless systems like Raspberry Pi).
 	if shouldForceFileBackend(options.GOOS, backendInfo, options.DBusAddress) {
-		backends = []keyring.BackendType{keyring.FileBackend}
+		backends = []keyring.Backend{keyring.FileBackend}
 		wrapFileKeys = true
 	}
 
-	cfg := keyring.Config{
-		ServiceName: serviceNameFor(options),
-		// KeychainTrustApplication is intentionally false to support Homebrew upgrades.
-		// When true, macOS Keychain ties access control to the specific binary hash.
-		// Homebrew upgrades install a new binary with a different hash, causing the
-		// new binary to lose access to existing keychain items. With false, users may
-		// see a one-time keychain prompt after upgrade (click "Always Allow"), but
-		// tokens survive across upgrades. See: https://github.com/steipete/gogcli/issues/86
-		KeychainTrustApplication: false,
-		AllowedBackends:          backends,
-		FileDir:                  keyringDir,
-		FilePasswordFunc:         fileKeyringPasswordFuncFrom(options.Password, options.PasswordSet, options.IsTTY),
-	}
+	openOptions := keyringOpenOptions(
+		serviceNameFor(options),
+		keyringProviders(keyringDir, fileKeyringPasswordFuncFrom(options.Password, options.PasswordSet, options.IsTTY)),
+		backends,
+	)
 
 	openTimeout := options.OpenTimeout
 	if openTimeout <= 0 {
@@ -288,7 +316,8 @@ func openKeyringWithOptions(options OpenOptions) (keyring.Keyring, error) {
 	// Use a timeout as a safety net.
 	if shouldUseKeyringTimeout(options.GOOS, backendInfo, options.DBusAddress) {
 		timeoutRing, timeoutErr := openKeyringWithTimeoutFunc(
-			cfg,
+			ctx,
+			openOptions,
 			openTimeout,
 			keyringTimeoutHint(options.GOOS),
 			open,
@@ -300,7 +329,7 @@ func openKeyringWithOptions(options OpenOptions) (keyring.Keyring, error) {
 		return prepareKeyring(timeoutRing, backendInfo, wrapFileKeys, options), nil
 	}
 
-	ring, err := open(cfg)
+	ring, err := open(ctx, openOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("open keyring: %w", err)
 	}
@@ -315,7 +344,7 @@ func prepareKeyring(
 	options OpenOptions,
 ) keyring.Keyring {
 	if wrapFileKeys || isFileKeyring(ring) {
-		ring = newFileSafeKeyring(ring)
+		ring = newLegacyFileKeyring(ring)
 	}
 
 	if shouldUseKeyringOperationTimeout(options.GOOS, backendInfo, options.DBusAddress) {
@@ -323,7 +352,7 @@ func prepareKeyring(
 		if timeout <= 0 {
 			timeout = defaultKeyringOpenTimeout(options.GOOS)
 		}
-		ring = newTimeoutKeyring(ring, timeout, keyringTimeoutHint(options.GOOS))
+		ring = keyring.Timeout(ring, timeout)
 	}
 
 	return ring
@@ -338,15 +367,16 @@ type keyringResult struct {
 // blocking the CLI indefinitely. The worker goroutine may remain blocked until
 // process exit after a timeout.
 func openKeyringWithTimeoutFunc(
-	cfg keyring.Config,
+	ctx context.Context,
+	options []keyring.Option,
 	timeout time.Duration,
 	hint string,
-	open func(keyring.Config) (keyring.Keyring, error),
+	open openKeyringFunc,
 ) (keyring.Keyring, error) {
 	ch := make(chan keyringResult, 1)
 
 	go func() {
-		ring, err := open(cfg)
+		ring, err := open(ctx, options...)
 		ch <- keyringResult{ring, err}
 	}()
 
@@ -363,7 +393,11 @@ func openKeyringWithTimeoutFunc(
 }
 
 func Open(options OpenOptions) (Repository, error) {
-	ring, err := openKeyringWithOptions(options)
+	return OpenContext(context.Background(), options)
+}
+
+func OpenContext(ctx context.Context, options OpenOptions) (Repository, error) {
+	ring, err := openKeyringWithOptions(ctx, options)
 	if err != nil {
 		return nil, err
 	}

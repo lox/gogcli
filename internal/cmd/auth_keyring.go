@@ -10,7 +10,7 @@ import (
 )
 
 type AuthKeyringCmd struct {
-	Backend  string `arg:"" optional:"" name:"backend" help:"Keyring backend: auto|keychain|file"`
+	Backend  string `arg:"" optional:"" name:"backend" help:"Keyring backend: auto|keychain|1password|file"`
 	Backend2 string `arg:"" optional:"" name:"backend2" help:"(compat) Use: gog auth keyring set <backend>"`
 }
 
@@ -54,7 +54,7 @@ func (c *AuthKeyringCmd) Run(ctx context.Context, flags *RootFlags) error {
 		u.Out().Linef("path\t%s", path)
 		u.Out().Linef("keyring_backend\t%s", info.Value)
 		u.Out().Linef("source\t%s", info.Source)
-		u.Err().Println("Hint: gog auth keyring <auto|keychain|file>")
+		u.Err().Println("Hint: gog auth keyring <auto|keychain|1password|file>")
 		return nil
 	}
 
@@ -69,10 +69,11 @@ func (c *AuthKeyringCmd) Run(ctx context.Context, flags *RootFlags) error {
 	allowed := map[string]struct{}{
 		literalAuto: {},
 		"keychain":  {},
+		"1password": {},
 		strFile:     {},
 	}
 	if _, ok := allowed[backend]; !ok {
-		return usagef("invalid backend: %q (expected auto, keychain, or file)", c.Backend)
+		return usagef("invalid backend: %q (expected auto, keychain, 1password, or file)", c.Backend)
 	}
 
 	store, err := commandConfigStore(ctx)

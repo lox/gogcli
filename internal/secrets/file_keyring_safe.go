@@ -1,37 +1,35 @@
 package secrets
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/fs"
 	"sort"
 	"strings"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 )
 
 const fileKeyPrefix = "_gogcli_key_v1_"
 
-var isInvalidFileKeyError = defaultIsInvalidFileKeyError
-
-type fileSafeKeyring struct {
+type legacyFileKeyring struct {
 	inner keyring.Keyring
 }
 
-func newFileSafeKeyring(inner keyring.Keyring) keyring.Keyring {
-	return &fileSafeKeyring{inner: inner}
+func newLegacyFileKeyring(inner keyring.Keyring) keyring.Keyring {
+	return &legacyFileKeyring{inner: inner}
 }
 
-func fileKeyringBackendOnly(backends []keyring.BackendType) bool {
+func fileKeyringBackendOnly(backends []keyring.Backend) bool {
 	return len(backends) == 1 && backends[0] == keyring.FileBackend
 }
 
-func fileSafeKey(key string) string {
+func legacyFileSafeKey(key string) string {
 	return fileKeyPrefix + base64.RawURLEncoding.EncodeToString([]byte(key))
 }
 
-func decodeFileSafeKey(key string) string {
+func decodeLegacyFileSafeKey(key string) string {
 	encoded, ok := strings.CutPrefix(key, fileKeyPrefix)
 	if !ok {
 		return key
@@ -43,33 +41,26 @@ func decodeFileSafeKey(key string) string {
 	}
 
 	decoded := string(raw)
-	if fileSafeKey(decoded) != key {
+	if legacyFileSafeKey(decoded) != key {
 		return key
 	}
 
 	return decoded
 }
 
-func fileKeyNotFound(err error) bool {
-	return errors.Is(err, keyring.ErrKeyNotFound) ||
-		errors.Is(err, fs.ErrNotExist) ||
-		isInvalidFileKeyError(err)
-}
-
-func (k *fileSafeKeyring) Get(key string) (keyring.Item, error) {
-	item, err := k.inner.Get(fileSafeKey(key))
+func (k *legacyFileKeyring) Get(ctx context.Context, key string) (keyring.Item, error) {
+	item, err := k.inner.Get(ctx, key)
 	if err == nil {
-		item.Key = key
 		return item, nil
 	}
 
-	if !fileKeyNotFound(err) {
-		return keyring.Item{}, fmt.Errorf("read encoded file keyring item: %w", err)
+	if !errors.Is(err, keyring.ErrKeyNotFound) {
+		return keyring.Item{}, fmt.Errorf("read file keyring item: %w", err)
 	}
 
-	item, legacyErr := k.inner.Get(key)
+	item, legacyErr := k.inner.Get(ctx, legacyFileSafeKey(key))
 	if legacyErr != nil {
-		if fileKeyNotFound(legacyErr) {
+		if errors.Is(legacyErr, keyring.ErrKeyNotFound) {
 			return keyring.Item{}, keyring.ErrKeyNotFound
 		}
 
@@ -81,67 +72,76 @@ func (k *fileSafeKeyring) Get(key string) (keyring.Item, error) {
 	return item, nil
 }
 
-func (k *fileSafeKeyring) GetMetadata(key string) (keyring.Metadata, error) {
-	meta, err := k.inner.GetMetadata(fileSafeKey(key))
+func (k *legacyFileKeyring) Metadata(ctx context.Context, key string) (keyring.Metadata, error) {
+	reader, ok := k.inner.(keyring.MetadataReader)
+	if !ok {
+		return keyring.Metadata{}, keyring.ErrMetadataNotSupported
+	}
+
+	meta, err := reader.Metadata(ctx, key)
 	if err == nil {
 		return meta, nil
 	}
 
-	if !fileKeyNotFound(err) {
-		return keyring.Metadata{}, fmt.Errorf("read encoded file keyring metadata: %w", err)
+	if !errors.Is(err, keyring.ErrKeyNotFound) {
+		return keyring.Metadata{}, fmt.Errorf("read file keyring metadata: %w", err)
 	}
 
-	meta, legacyErr := k.inner.GetMetadata(key)
+	meta, legacyErr := reader.Metadata(ctx, legacyFileSafeKey(key))
 	if legacyErr != nil {
-		if fileKeyNotFound(legacyErr) {
+		if errors.Is(legacyErr, keyring.ErrKeyNotFound) {
 			return keyring.Metadata{}, keyring.ErrKeyNotFound
 		}
 
 		return keyring.Metadata{}, fmt.Errorf("read legacy file keyring metadata: %w", legacyErr)
 	}
 
+	if meta.Item != nil {
+		meta.Key = key
+	}
+
 	return meta, nil
 }
 
-func (k *fileSafeKeyring) Set(item keyring.Item) error {
-	item.Key = fileSafeKey(item.Key)
-	if err := k.inner.Set(item); err != nil {
+func (k *legacyFileKeyring) Set(ctx context.Context, item keyring.Item) error {
+	if err := k.inner.Set(ctx, item); err != nil {
 		return fmt.Errorf("store file keyring item: %w", err)
 	}
 
 	return nil
 }
 
-func (k *fileSafeKeyring) Remove(key string) error {
-	encodedErr := k.inner.Remove(fileSafeKey(key))
-	legacyErr := k.inner.Remove(key)
+func (k *legacyFileKeyring) Remove(ctx context.Context, key string) error {
+	err := k.inner.Remove(ctx, key)
+	legacyErr := k.inner.Remove(ctx, legacyFileSafeKey(key))
 
-	if (encodedErr == nil || fileKeyNotFound(encodedErr)) && (legacyErr == nil || fileKeyNotFound(legacyErr)) {
-		if fileKeyNotFound(encodedErr) && fileKeyNotFound(legacyErr) {
+	if (err == nil || errors.Is(err, keyring.ErrKeyNotFound)) &&
+		(legacyErr == nil || errors.Is(legacyErr, keyring.ErrKeyNotFound)) {
+		if errors.Is(err, keyring.ErrKeyNotFound) && errors.Is(legacyErr, keyring.ErrKeyNotFound) {
 			return keyring.ErrKeyNotFound
 		}
 
 		return nil
 	}
 
-	if encodedErr != nil && !fileKeyNotFound(encodedErr) {
-		return fmt.Errorf("remove encoded file keyring item: %w", encodedErr)
+	if err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		return fmt.Errorf("remove file keyring item: %w", err)
 	}
 
 	return fmt.Errorf("remove legacy file keyring item: %w", legacyErr)
 }
 
-func (k *fileSafeKeyring) Keys() ([]string, error) {
-	keys, err := k.inner.Keys()
+func (k *legacyFileKeyring) Keys(ctx context.Context) ([]string, error) {
+	keys, err := k.inner.Keys(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list file keyring keys: %w", err)
 	}
 
 	out := make([]string, 0, len(keys))
-
 	seen := make(map[string]struct{}, len(keys))
+
 	for _, key := range keys {
-		decoded := decodeFileSafeKey(key)
+		decoded := decodeLegacyFileSafeKey(key)
 		if _, ok := seen[decoded]; ok {
 			continue
 		}

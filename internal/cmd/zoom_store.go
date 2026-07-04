@@ -19,7 +19,7 @@ func commandZoomStore(ctx context.Context) (*zoom.Store, error) {
 			if runtime.Auth.OpenSecretStore != nil {
 				return runtime.Auth.OpenSecretStore()
 			}
-			return openRuntimeSecretsRepository(runtime)
+			return openRuntimeSecretsRepositoryContext(ctx, runtime)
 		}, os.LookupEnv)
 		if err != nil {
 			return nil, err

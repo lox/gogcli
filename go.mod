@@ -5,8 +5,10 @@ go 1.26.2
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.0
 	filippo.io/age v1.3.1
-	github.com/99designs/keyring v1.2.2
 	github.com/alecthomas/kong v1.15.0
+	github.com/lox/keyring-1password v0.1.2
+	github.com/lox/keyring-defaults v0.1.0
+	github.com/lox/keyring/v2 v2.0.1-0.20260704102540-c5baed4fa349
 	github.com/mark3labs/mcp-go v0.55.0
 	github.com/muesli/termenv v0.16.0
 	github.com/stretchr/testify v1.11.1
@@ -19,6 +21,16 @@ require (
 	golang.org/x/text v0.38.0
 	google.golang.org/api v0.285.0
 	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	github.com/lox/keyring-keychain v0.1.0 // indirect
+	github.com/lox/keyring-keyctl v0.1.0 // indirect
+	github.com/lox/keyring-kwallet v0.1.0 // indirect
+	github.com/lox/keyring-pass v0.1.0 // indirect
+	github.com/lox/keyring-secretservice v0.1.0 // indirect
+	github.com/lox/keyring-wincred v0.1.0 // indirect
+	github.com/lox/onepassword-sdk-native-go v0.1.0 // indirect
 )
 
 require (
@@ -43,7 +55,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/enterprise-certificate-proxy v0.3.16 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
-	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect

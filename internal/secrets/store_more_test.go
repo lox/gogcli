@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/keyring"
+	onepassword "github.com/lox/keyring-1password"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
@@ -76,7 +78,7 @@ func TestKeyringStore_CustomClientDefaultDoesNotUseLegacyKey(t *testing.T) {
 	ring := keyring.NewArrayKeyring(nil)
 	store := &KeyringStore{ring: ring}
 
-	if err := ring.Set(keyringItem(defaultAccountKey, []byte("default@example.com"))); err != nil {
+	if err := ring.Set(context.Background(), keyringItem(defaultAccountKey, []byte("default@example.com"))); err != nil {
 		t.Fatalf("seed legacy default: %v", err)
 	}
 
@@ -117,11 +119,11 @@ func TestKeyringStore_DefaultClientPrefersScopedLegacyKey(t *testing.T) {
 	ring := keyring.NewArrayKeyring(nil)
 	store := &KeyringStore{ring: ring}
 
-	if err := ring.Set(keyringItem(defaultAccountKeyForClient(config.DefaultClientName), []byte("personal@example.com"))); err != nil {
+	if err := ring.Set(context.Background(), keyringItem(defaultAccountKeyForClient(config.DefaultClientName), []byte("personal@example.com"))); err != nil {
 		t.Fatalf("seed scoped default: %v", err)
 	}
 
-	if err := ring.Set(keyringItem(defaultAccountKey, []byte("work@example.com"))); err != nil {
+	if err := ring.Set(context.Background(), keyringItem(defaultAccountKey, []byte("work@example.com"))); err != nil {
 		t.Fatalf("seed legacy default: %v", err)
 	}
 
@@ -154,9 +156,42 @@ func TestAllowedBackends(t *testing.T) {
 		t.Fatalf("keychain allowed: %v", err)
 	}
 
+	if _, err := allowedBackends(KeyringBackendInfo{Value: "1password"}); err != nil {
+		t.Fatalf("1password allowed: %v", err)
+	}
+
 	if _, err := allowedBackends(KeyringBackendInfo{Value: "file"}); err != nil {
 		t.Fatalf("file allowed: %v", err)
 	}
+}
+
+func TestKeyringProvidersAppendAppSuppliedFallbacks(t *testing.T) {
+	providers := keyringProviders(t.TempDir(), keyring.FixedStringPrompt("pw"))
+	if len(providers) < 2 {
+		t.Fatalf("expected provider defaults plus app fallbacks, got %d providers", len(providers))
+	}
+
+	if got := providers[len(providers)-2].Backend; got != onepassword.Backend {
+		t.Fatalf("expected 1Password before file fallback, got %q", got)
+	}
+
+	if got := providers[len(providers)-1].Backend; got != keyring.FileBackend {
+		t.Fatalf("expected file provider fallback last, got %q", got)
+	}
+
+	if providerIndex(providers, keyring.KeychainBackend) < 0 {
+		t.Fatalf("expected keychain provider from defaults")
+	}
+}
+
+func providerIndex(providers []keyring.Provider, backend keyring.Backend) int {
+	for i, provider := range providers {
+		if provider.Backend == backend {
+			return i
+		}
+	}
+
+	return -1
 }
 
 func TestWrapKeychainError(t *testing.T) {
@@ -232,7 +267,7 @@ func TestOpenError(t *testing.T) {
 		Config:  config.NewConfigStore(layout),
 		Backend: "file",
 		GOOS:    runtime.GOOS,
-		openKeyringFn: func(keyring.Config) (keyring.Keyring, error) {
+		openKeyringFn: func(context.Context, ...keyring.Option) (keyring.Keyring, error) {
 			return nil, errTestKeychain
 		},
 	}
@@ -270,7 +305,7 @@ func TestKeyringStoreSubjectKeyRoundTripAndDelete(t *testing.T) {
 		t.Fatalf("SetToken: %v", err)
 	}
 
-	if _, err := ring.Get(subjectTokenKey(client, tok.Subject)); err != nil {
+	if _, err := ring.Get(context.Background(), subjectTokenKey(client, tok.Subject)); err != nil {
 		t.Fatalf("expected subject key: %v", err)
 	}
 
@@ -296,7 +331,7 @@ func TestKeyringStoreSubjectKeyRoundTripAndDelete(t *testing.T) {
 		t.Fatalf("DeleteToken: %v", err)
 	}
 
-	if _, err := ring.Get(subjectTokenKey(client, tok.Subject)); !errors.Is(err, keyring.ErrKeyNotFound) {
+	if _, err := ring.Get(context.Background(), subjectTokenKey(client, tok.Subject)); !errors.Is(err, keyring.ErrKeyNotFound) {
 		t.Fatalf("expected subject key deleted, got %v", err)
 	}
 }
@@ -347,7 +382,7 @@ func TestKeyringStoreSetTokenRepairsDuplicateAliasWrites(t *testing.T) {
 		legacyTokenKey(email),
 		subjectTokenKey(config.DefaultClientName, subject),
 	} {
-		if err := ring.ArrayKeyring.Set(keyringItem(key, []byte("stale"))); err != nil {
+		if err := ring.ArrayKeyring.Set(context.Background(), keyringItem(key, []byte("stale"))); err != nil {
 			t.Fatalf("seed stale alias %q: %v", key, err)
 		}
 	}
@@ -364,7 +399,7 @@ func TestKeyringStoreSetTokenRepairsDuplicateAliasWrites(t *testing.T) {
 		t.Fatalf("SetToken: %v", err)
 	}
 
-	primary, err := ring.Get(tokenKey(config.DefaultClientName, email))
+	primary, err := ring.Get(context.Background(), tokenKey(config.DefaultClientName, email))
 	if err != nil {
 		t.Fatalf("read primary token: %v", err)
 	}
@@ -373,7 +408,7 @@ func TestKeyringStoreSetTokenRepairsDuplicateAliasWrites(t *testing.T) {
 		legacyTokenKey(email),
 		subjectTokenKey(config.DefaultClientName, subject),
 	} {
-		item, getErr := ring.Get(key)
+		item, getErr := ring.Get(context.Background(), key)
 		if getErr != nil {
 			t.Fatalf("expected key %q persisted after duplicate repair: %v", key, getErr)
 		}
@@ -409,7 +444,7 @@ func TestKeyringStoreSetTokenKeepsPrimaryDuplicateStrict(t *testing.T) {
 		removedKeys: map[string]int{},
 	}
 
-	if err := ring.ArrayKeyring.Set(keyringItem(primaryKey, []byte("stale-primary"))); err != nil {
+	if err := ring.ArrayKeyring.Set(context.Background(), keyringItem(primaryKey, []byte("stale-primary"))); err != nil {
 		t.Fatalf("seed stale primary: %v", err)
 	}
 
@@ -424,7 +459,7 @@ func TestKeyringStoreSetTokenKeepsPrimaryDuplicateStrict(t *testing.T) {
 		t.Fatalf("primary token was removed during strict write")
 	}
 
-	item, getErr := ring.Get(primaryKey)
+	item, getErr := ring.Get(context.Background(), primaryKey)
 	if getErr != nil {
 		t.Fatalf("read primary token: %v", getErr)
 	}
@@ -452,11 +487,11 @@ func TestKeyringStoreDeleteTokenAliasPreservesSubjectKey(t *testing.T) {
 		t.Fatalf("DeleteTokenAlias: %v", err)
 	}
 
-	if _, err := ring.Get(tokenKey(client, "old@example.com")); !errors.Is(err, keyring.ErrKeyNotFound) {
+	if _, err := ring.Get(context.Background(), tokenKey(client, "old@example.com")); !errors.Is(err, keyring.ErrKeyNotFound) {
 		t.Fatalf("expected email token removed, got %v", err)
 	}
 
-	if _, err := ring.Get(subjectTokenKey(client, tok.Subject)); err != nil {
+	if _, err := ring.Get(context.Background(), subjectTokenKey(client, tok.Subject)); err != nil {
 		t.Fatalf("expected subject key preserved, got %v", err)
 	}
 }
@@ -483,7 +518,7 @@ func TestKeyringStoreSetTokenRemovesStaleSubjectKey(t *testing.T) {
 		t.Fatalf("SetToken new: %v", err)
 	}
 
-	if _, err := ring.Get(subjectTokenKey(client, "old-sub")); !errors.Is(err, keyring.ErrKeyNotFound) {
+	if _, err := ring.Get(context.Background(), subjectTokenKey(client, "old-sub")); !errors.Is(err, keyring.ErrKeyNotFound) {
 		t.Fatalf("expected old subject key removed, got %v", err)
 	}
 
@@ -507,7 +542,7 @@ func TestKeyringStoreWritePathsSetLabel(t *testing.T) {
 		tokenKey(client, normalize(email)),
 		legacyTokenKey(normalize(email)),
 	} {
-		it, err := ring.Get(k)
+		it, err := ring.Get(context.Background(), k)
 		if err != nil {
 			t.Fatalf("Get(%q): %v", k, err)
 		}
@@ -522,7 +557,7 @@ func TestKeyringStoreWritePathsSetLabel(t *testing.T) {
 	}
 
 	for _, k := range []string{defaultAccountKeyForClient(client), defaultAccountKey} {
-		it, err := ring.Get(k)
+		it, err := ring.Get(context.Background(), k)
 		if err != nil {
 			t.Fatalf("Get(%q): %v", k, err)
 		}
@@ -548,7 +583,7 @@ func TestGetTokenMigrationSetsLabel(t *testing.T) {
 	}
 
 	// Simulate an old legacy item created before label support.
-	if setErr := ring.Set(keyring.Item{Key: legacyTokenKey(email), Data: payload}); setErr != nil {
+	if setErr := ring.Set(context.Background(), keyring.Item{Key: legacyTokenKey(email), Data: payload}); setErr != nil {
 		t.Fatalf("Set legacy token: %v", setErr)
 	}
 
@@ -556,7 +591,7 @@ func TestGetTokenMigrationSetsLabel(t *testing.T) {
 		t.Fatalf("GetToken: %v", getErr)
 	}
 
-	it, err := ring.Get(tokenKey(client, email))
+	it, err := ring.Get(context.Background(), tokenKey(client, email))
 	if err != nil {
 		t.Fatalf("Get migrated key: %v", err)
 	}
@@ -581,7 +616,7 @@ func TestGetTokenNoMigrateReadsLegacyWithoutWritingPrimary(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 
-	if setErr := ring.Set(keyring.Item{Key: legacyTokenKey(email), Data: payload}); setErr != nil {
+	if setErr := ring.Set(context.Background(), keyring.Item{Key: legacyTokenKey(email), Data: payload}); setErr != nil {
 		t.Fatalf("Set legacy token: %v", setErr)
 	}
 
@@ -594,11 +629,11 @@ func TestGetTokenNoMigrateReadsLegacyWithoutWritingPrimary(t *testing.T) {
 		t.Fatalf("unexpected token: %#v", got)
 	}
 
-	if _, err := ring.Get(tokenKey(client, email)); !errors.Is(err, keyring.ErrKeyNotFound) {
+	if _, err := ring.Get(context.Background(), tokenKey(client, email)); !errors.Is(err, keyring.ErrKeyNotFound) {
 		t.Fatalf("expected primary token to remain missing, got %v", err)
 	}
 
-	if _, err := ring.Get(legacyTokenKey(email)); err != nil {
+	if _, err := ring.Get(context.Background(), legacyTokenKey(email)); err != nil {
 		t.Fatalf("expected legacy token to remain readable, got %v", err)
 	}
 }
@@ -609,7 +644,7 @@ func TestGetTokenClassifiesCorruptStoredToken(t *testing.T) {
 	client := "work"
 	email := "a@b.com"
 
-	if err := ring.Set(keyringItem(tokenKey(client, email), []byte("{not-json"))); err != nil {
+	if err := ring.Set(context.Background(), keyringItem(tokenKey(client, email), []byte("{not-json"))); err != nil {
 		t.Fatalf("seed token: %v", err)
 	}
 
@@ -642,7 +677,7 @@ func TestGetTokenBySubjectClassifiesCorruptStoredToken(t *testing.T) {
 	client := "work"
 	subject := "sub-123"
 
-	if err := ring.Set(keyringItem(subjectTokenKey(client, subject), []byte("{not-json"))); err != nil {
+	if err := ring.Set(context.Background(), keyringItem(subjectTokenKey(client, subject), []byte("{not-json"))); err != nil {
 		t.Fatalf("seed subject token: %v", err)
 	}
 
@@ -658,12 +693,12 @@ type legacyTokenReadErrorKeyring struct {
 	err       error
 }
 
-func (l *legacyTokenReadErrorKeyring) Get(key string) (keyring.Item, error) {
+func (l *legacyTokenReadErrorKeyring) Get(ctx context.Context, key string) (keyring.Item, error) {
 	if key == l.legacyKey {
 		return keyring.Item{}, l.err
 	}
 
-	item, err := l.ArrayKeyring.Get(key)
+	item, err := l.ArrayKeyring.Get(ctx, key)
 	if err != nil {
 		return keyring.Item{}, fmt.Errorf("array get: %w", err)
 	}
@@ -696,11 +731,11 @@ type silentDropKeyring struct {
 	keyring.ArrayKeyring
 }
 
-func (s *silentDropKeyring) Set(_ keyring.Item) error { return nil }
-func (s *silentDropKeyring) Get(_ string) (keyring.Item, error) {
+func (s *silentDropKeyring) Set(context.Context, keyring.Item) error { return nil }
+func (s *silentDropKeyring) Get(context.Context, string) (keyring.Item, error) {
 	return keyring.Item{Data: nil}, nil
 }
-func (s *silentDropKeyring) Keys() ([]string, error) { return nil, nil }
+func (s *silentDropKeyring) Keys(context.Context) ([]string, error) { return nil, nil }
 
 func TestSetTokenVerifyCatchesEmptyWrite(t *testing.T) {
 	store := &KeyringStore{ring: &silentDropKeyring{}}
@@ -725,11 +760,11 @@ type readBackErrorKeyring struct {
 	keyring.ArrayKeyring
 }
 
-func (r *readBackErrorKeyring) Set(_ keyring.Item) error { return nil }
-func (r *readBackErrorKeyring) Get(_ string) (keyring.Item, error) {
+func (r *readBackErrorKeyring) Set(context.Context, keyring.Item) error { return nil }
+func (r *readBackErrorKeyring) Get(context.Context, string) (keyring.Item, error) {
 	return keyring.Item{}, errTestReadBack
 }
-func (r *readBackErrorKeyring) Keys() ([]string, error) { return nil, nil }
+func (r *readBackErrorKeyring) Keys(context.Context) ([]string, error) { return nil, nil }
 
 type duplicateOnceKeyring struct {
 	*keyring.ArrayKeyring
@@ -737,23 +772,23 @@ type duplicateOnceKeyring struct {
 	removedKeys   map[string]int
 }
 
-func (d *duplicateOnceKeyring) Set(item keyring.Item) error {
+func (d *duplicateOnceKeyring) Set(ctx context.Context, item keyring.Item) error {
 	if remaining := d.duplicateKeys[item.Key]; remaining > 0 {
 		d.duplicateKeys[item.Key] = remaining - 1
 		return errTestDuplicateKeychain
 	}
 
-	if err := d.ArrayKeyring.Set(item); err != nil {
+	if err := d.ArrayKeyring.Set(ctx, item); err != nil {
 		return fmt.Errorf("set array keyring item: %w", err)
 	}
 
 	return nil
 }
 
-func (d *duplicateOnceKeyring) Remove(key string) error {
+func (d *duplicateOnceKeyring) Remove(ctx context.Context, key string) error {
 	d.removedKeys[key]++
 
-	if err := d.ArrayKeyring.Remove(key); err != nil {
+	if err := d.ArrayKeyring.Remove(ctx, key); err != nil {
 		return fmt.Errorf("remove array keyring item: %w", err)
 	}
 
@@ -784,20 +819,20 @@ type legacyMigrationSilentDropKeyring struct {
 	setPrimary bool
 }
 
-func (l *legacyMigrationSilentDropKeyring) Set(item keyring.Item) error {
+func (l *legacyMigrationSilentDropKeyring) Set(ctx context.Context, item keyring.Item) error {
 	if item.Key == l.primaryKey {
 		l.setPrimary = true
 		return nil
 	}
 
-	if err := l.ArrayKeyring.Set(item); err != nil {
+	if err := l.ArrayKeyring.Set(ctx, item); err != nil {
 		return fmt.Errorf("array set: %w", err)
 	}
 
 	return nil
 }
 
-func (l *legacyMigrationSilentDropKeyring) Get(key string) (keyring.Item, error) {
+func (l *legacyMigrationSilentDropKeyring) Get(ctx context.Context, key string) (keyring.Item, error) {
 	if key == l.primaryKey {
 		if !l.setPrimary {
 			return keyring.Item{}, keyring.ErrKeyNotFound
@@ -806,7 +841,7 @@ func (l *legacyMigrationSilentDropKeyring) Get(key string) (keyring.Item, error)
 		return keyring.Item{Key: key, Data: nil}, nil
 	}
 
-	item, err := l.ArrayKeyring.Get(key)
+	item, err := l.ArrayKeyring.Get(ctx, key)
 	if err != nil {
 		return keyring.Item{}, fmt.Errorf("array get: %w", err)
 	}
@@ -829,7 +864,7 @@ func TestGetTokenLegacyMigrationVerifiesWrite(t *testing.T) {
 		t.Fatalf("marshal token: %v", err)
 	}
 
-	err = ring.ArrayKeyring.Set(keyringItem(legacyTokenKey(email), payload))
+	err = ring.ArrayKeyring.Set(context.Background(), keyringItem(legacyTokenKey(email), payload))
 	if err != nil {
 		t.Fatalf("seed legacy token: %v", err)
 	}
@@ -853,7 +888,7 @@ func TestSetSecretSetsLabel(t *testing.T) {
 		t.Fatalf("SetSecret: %v", err)
 	}
 
-	it, err := ring.Get(key)
+	it, err := ring.Get(context.Background(), key)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -876,7 +911,7 @@ func TestDeleteSecretDeletesKey(t *testing.T) {
 		t.Fatalf("DeleteSecret: %v", err)
 	}
 
-	if _, err := ring.Get(key); !errors.Is(err, keyring.ErrKeyNotFound) {
+	if _, err := ring.Get(context.Background(), key); !errors.Is(err, keyring.ErrKeyNotFound) {
 		t.Fatalf("expected key deleted, got %v", err)
 	}
 }

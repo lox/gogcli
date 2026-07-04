@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,23 +10,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/lox/keyring/v2"
 
 	"github.com/steipete/gogcli/internal/config"
 )
 
 var errKeyringOpenBlocked = errors.New("keyring open blocked")
 
-// keyringConfig creates a keyring.Config for testing.
-// KeychainTrustApplication is false to match production config (see store.go).
-func keyringConfig(keyringDir string) keyring.Config {
-	return keyring.Config{
-		ServiceName:              config.AppName,
-		KeychainTrustApplication: false,
-		AllowedBackends:          []keyring.BackendType{keyring.FileBackend},
-		FileDir:                  keyringDir,
-		FilePasswordFunc:         fileKeyringPasswordFuncFrom("testpass", true, false),
-	}
+func keyringTestOptions(keyringDir string) []keyring.Option {
+	return keyringOpenOptions(
+		config.AppName,
+		keyringProviders(keyringDir, fileKeyringPasswordFuncFrom("testpass", true, false)),
+		[]keyring.Backend{keyring.FileBackend},
+	)
 }
 
 func TestKeyringServiceName(t *testing.T) {
@@ -129,7 +126,7 @@ func TestOpenUsesInjectedOptions(t *testing.T) {
 	t.Parallel()
 
 	layout := config.Layout{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
-	var opened keyring.Config
+	var opened keyring.OpenOptions
 	options := OpenOptions{
 		Layout:      layout,
 		Config:      config.NewConfigStore(layout),
@@ -141,9 +138,16 @@ func TestOpenUsesInjectedOptions(t *testing.T) {
 		DBusAddress: "ignored",
 		OpenTimeout: time.Second,
 		LockTimeout: 250 * time.Millisecond,
-		openKeyringFn: func(cfg keyring.Config) (keyring.Keyring, error) {
-			opened = cfg
-			return keyring.NewArrayKeyring(nil), nil
+		openKeyringFn: func(ctx context.Context, opts ...keyring.Option) (keyring.Keyring, error) {
+			opts = append(opts, keyring.WithProvider(keyring.Provider{
+				Backend: keyring.FileBackend,
+				Open: func(ctx context.Context, options keyring.OpenOptions) (keyring.Keyring, error) {
+					opened = options
+					return keyring.NewArrayKeyring(nil), nil
+				},
+			}))
+
+			return keyring.Open(ctx, opts...)
 		},
 	}
 
@@ -157,15 +161,8 @@ func TestOpenUsesInjectedOptions(t *testing.T) {
 		t.Fatalf("repository = %T", repository)
 	}
 
-	if opened.ServiceName != "isolated" ||
-		len(opened.AllowedBackends) != 1 ||
-		opened.AllowedBackends[0] != keyring.FileBackend {
-		t.Fatalf("keyring config = %#v", opened)
-	}
-
-	password, err := opened.FilePasswordFunc("prompt")
-	if err != nil || password != "pw" {
-		t.Fatalf("password = %q, err = %v", password, err)
+	if opened.ServiceName != "isolated" {
+		t.Fatalf("keyring options = %#v", opened)
 	}
 
 	if store.lock == nil || store.lock.path != filepath.Join(layout.KeyringDir(), keyringLockFilename) {
@@ -194,7 +191,7 @@ func TestOpenKeepsRuntimeHomesIndependent(t *testing.T) {
 			Backend:     "file",
 			PasswordSet: true,
 			GOOS:        "linux",
-			openKeyringFn: func(keyring.Config) (keyring.Keyring, error) {
+			openKeyringFn: func(context.Context, ...keyring.Option) (keyring.Keyring, error) {
 				return keyring.NewArrayKeyring(nil), nil
 			},
 		})
@@ -408,10 +405,8 @@ func TestOpenKeyringWithTimeout_Success(t *testing.T) {
 		t.Fatalf("EnsureKeyringDir: %v", err)
 	}
 
-	cfg := keyringConfig(keyringDir)
-
 	// Should complete well within the timeout
-	ring, err := openKeyringWithTimeoutFunc(cfg, 5*time.Second, keyringTimeoutHint(runtime.GOOS), keyring.Open)
+	ring, err := openKeyringWithTimeoutFunc(context.Background(), keyringTestOptions(keyringDir), 5*time.Second, keyringTimeoutHint(runtime.GOOS), keyring.Open)
 	if err != nil {
 		t.Fatalf("openKeyringWithTimeout: %v", err)
 	}
@@ -433,15 +428,13 @@ func TestOpenKeyringWithTimeout_Timeout(t *testing.T) {
 		t.Fatalf("EnsureKeyringDir: %v", err)
 	}
 
-	cfg := keyringConfig(keyringDir)
-
 	blockCh := make(chan struct{})
-	open := func(_ keyring.Config) (keyring.Keyring, error) {
+	open := func(context.Context, ...keyring.Option) (keyring.Keyring, error) {
 		<-blockCh
 		return nil, errKeyringOpenBlocked
 	}
 
-	_, err = openKeyringWithTimeoutFunc(cfg, 10*time.Millisecond, keyringTimeoutHint(runtime.GOOS), open)
+	_, err = openKeyringWithTimeoutFunc(context.Background(), keyringTestOptions(keyringDir), 10*time.Millisecond, keyringTimeoutHint(runtime.GOOS), open)
 
 	close(blockCh)
 
