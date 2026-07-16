@@ -202,6 +202,7 @@ type CalendarUpdateCmd struct {
 	GuestsCanSeeOthers    *bool    `name:"guests-can-see-others" help:"Allow guests to see other guests"`
 	WithMeet              bool     `name:"with-meet" help:"Create a Google Meet video conference for this event"`
 	RegenerateMeet        bool     `name:"regenerate-meet" help:"Replace the event's Google Meet video conference"`
+	RemoveMeet            bool     `name:"remove-meet" help:"Remove the event's Google Meet video conference"`
 	WithZoom              bool     `name:"with-zoom" help:"Create a Zoom video conference for this event"`
 	RegenerateZoom        bool     `name:"regenerate-zoom" help:"Replace the event's Zoom video conference"`
 	RemoveZoom            bool     `name:"remove-zoom" help:"Remove the event's Zoom video conference"`
@@ -252,6 +253,7 @@ func calendarUpdateFieldsFromKong(kctx *kong.Context) calendarUpdateFields {
 		GuestsCanSeeOthers:    flagProvided(kctx, "guests-can-see-others"),
 		WithMeet:              flagProvided(kctx, "with-meet"),
 		RegenerateMeet:        flagProvided(kctx, "regenerate-meet"),
+		RemoveMeet:            flagProvided(kctx, "remove-meet"),
 		WithZoom:              flagProvided(kctx, "with-zoom"),
 		RegenerateZoom:        flagProvided(kctx, "regenerate-zoom"),
 		RemoveZoom:            flagProvided(kctx, "remove-zoom"),

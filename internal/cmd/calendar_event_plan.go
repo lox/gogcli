@@ -108,6 +108,7 @@ type calendarUpdateFields struct {
 	GuestsCanSeeOthers    bool
 	WithMeet              bool
 	RegenerateMeet        bool
+	RemoveMeet            bool
 	WithZoom              bool
 	RegenerateZoom        bool
 	RemoveZoom            bool
@@ -230,6 +231,9 @@ func buildCalendarUpdatePlan(store *config.ConfigStore, input calendarUpdateInpu
 	}
 	if fields.WithMeet && fields.RegenerateMeet {
 		return nil, usage("use only one of --with-meet or --regenerate-meet")
+	}
+	if fields.RemoveMeet && (fields.WithMeet || fields.RegenerateMeet) {
+		return nil, usage("use only one of --with-meet, --regenerate-meet, or --remove-meet")
 	}
 	if mutexErr := validateZoomConferenceFlagMutex(fields); mutexErr != nil {
 		return nil, mutexErr

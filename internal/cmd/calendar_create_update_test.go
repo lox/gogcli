@@ -656,6 +656,49 @@ func TestCalendarUpdateCmd_RegenerateMeetReplacesConference(t *testing.T) {
 	}
 }
 
+func TestCalendarUpdateCmd_RemoveMeetClearsConferenceDataOnly(t *testing.T) {
+	var sawPatch bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/calendar/v3")
+		if r.Method == http.MethodPatch && path == "/calendars/cal@example.com/events/ev" {
+			sawPatch = true
+			if r.URL.Query().Get("conferenceDataVersion") != "1" {
+				t.Fatalf("expected conferenceDataVersion=1")
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode patch: %v", err)
+			}
+			conferenceData, ok := body["conferenceData"]
+			if !ok || conferenceData != nil {
+				t.Fatalf("expected conferenceData: null, got %#v", body)
+			}
+			if len(body) != 1 {
+				t.Fatalf("expected conferenceData-only patch, got %#v", body)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "ev", "summary": "Planning"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := newCalendarServiceFromServer(t, srv)
+	ctx := withCalendarTestService(newCmdRuntimeJSONOutputContext(t, io.Discard, io.Discard), svc)
+
+	if err := runKong(t, &CalendarUpdateCmd{}, []string{
+		"cal@example.com",
+		"ev",
+		"--remove-meet",
+	}, ctx, &RootFlags{Account: "a@b.com"}); err != nil {
+		t.Fatalf("runKong: %v", err)
+	}
+	if !sawPatch {
+		t.Fatal("expected patch")
+	}
+}
+
 func TestCalendarUpdateCmd_WithMeetScopeFutureExistingConferenceIsIdempotent(t *testing.T) {
 	var patchCalled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

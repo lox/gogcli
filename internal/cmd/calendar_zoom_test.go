@@ -592,12 +592,20 @@ func TestCalendarUpdateCmd_FlagMutex_WithZoomRegenerateMeet(t *testing.T) {
 	assertCalendarUpdateZoomMutex(t, "--with-zoom", "--regenerate-meet")
 }
 
+func TestCalendarUpdateCmd_FlagMutex_WithZoomRemoveMeet(t *testing.T) {
+	assertCalendarUpdateZoomMutex(t, "--with-zoom", "--remove-meet")
+}
+
 func TestCalendarUpdateCmd_FlagMutex_RegenerateZoomWithMeet(t *testing.T) {
 	assertCalendarUpdateZoomMutex(t, "--regenerate-zoom", "--with-meet")
 }
 
 func TestCalendarUpdateCmd_FlagMutex_RegenerateZoomRegenerateMeet(t *testing.T) {
 	assertCalendarUpdateZoomMutex(t, "--regenerate-zoom", "--regenerate-meet")
+}
+
+func TestCalendarUpdateCmd_FlagMutex_RegenerateZoomRemoveMeet(t *testing.T) {
+	assertCalendarUpdateZoomMutex(t, "--regenerate-zoom", "--remove-meet")
 }
 
 func assertCalendarUpdateZoomMutex(t *testing.T, flags ...string) {
