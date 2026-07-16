@@ -182,6 +182,10 @@ Environment:
   `onepassword_auth`, `onepassword_account`, `onepassword_vault`,
   `onepassword_item_title`, and `onepassword_timeout`; environment variables
   override config. `OP_SERVICE_ACCOUNT_TOKEN` remains environment-only.
+- `access_token_cache=true` in `config.json` enables a state-dir cache for
+  short-lived Google access tokens so repeated subprocesses can avoid reopening
+  the refresh-token keyring until the access token is near expiry or stored auth
+  changes.
 - `GOG_TIMEZONE=America/New_York` (default output timezone; IANA name or `UTC`; `local` forces local timezone)
 - `GOG_ENABLE_COMMANDS=calendar,tasks,gmail.search` (optional prefix allowlist; dot paths allowed; parent paths allow children)
 - `GOG_ENABLE_COMMANDS_EXACT=calendar.events,gmail.search` (optional exact allowlist; dot paths allowed; parent paths do not allow children)

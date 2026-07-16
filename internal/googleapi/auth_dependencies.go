@@ -25,6 +25,7 @@ type (
 	ServiceAccountStoreResolver   func() (*config.ServiceAccountStore, error)
 	ADCTokenSourceFunc            func(context.Context, ...string) (oauth2.TokenSource, error)
 	ServiceAccountTokenSourceFunc func(context.Context, []byte, string, []string) (oauth2.TokenSource, error)
+	AccessTokenCacheDirFunc       func() (string, error)
 )
 
 type AuthDependencies struct {
@@ -36,6 +37,7 @@ type AuthDependencies struct {
 	Mode                      AuthMode
 	ADCTokenSource            ADCTokenSourceFunc
 	ServiceAccountTokenSource ServiceAccountTokenSourceFunc
+	AccessTokenCacheDir       AccessTokenCacheDirFunc
 }
 
 var (
@@ -173,6 +175,14 @@ func (d AuthDependencies) serviceAccountTokenSource(ctx context.Context, keyJSON
 	}
 
 	return d.ServiceAccountTokenSource(ctx, keyJSON, subject, scopes)
+}
+
+func (d AuthDependencies) accessTokenCacheDir() (string, error) {
+	if d.AccessTokenCacheDir == nil {
+		return "", nil
+	}
+
+	return d.AccessTokenCacheDir()
 }
 
 func DefaultADCTokenSource(ctx context.Context, scopes ...string) (oauth2.TokenSource, error) {

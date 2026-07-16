@@ -304,6 +304,9 @@ func (c *AuthAddCmd) Run(ctx context.Context, flags *RootFlags) error {
 			return err
 		}
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
 	if outfmt.IsJSON(ctx) {
 		return outfmt.WriteJSON(ctx, stdoutWriter(ctx), map[string]any{
 			"stored":   true,

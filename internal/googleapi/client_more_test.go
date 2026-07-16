@@ -226,6 +226,101 @@ func TestTokenSourceForAccountScopes_OtherGetError(t *testing.T) {
 	}
 }
 
+func TestTokenSourceForAccountScopes_UsesAccessTokenCacheBeforeStore(t *testing.T) {
+	cacheDir := t.TempDir()
+	scopes := []string{"s1"}
+	expires := time.Now().Add(time.Hour)
+
+	if err := writeAccessTokenCache(cacheDir, "default", "a@b.com", scopes, scopes, &oauth2.Token{
+		AccessToken: "cached-access",
+		Expiry:      expires,
+	}); err != nil {
+		t.Fatalf("writeAccessTokenCache: %v", err)
+	}
+
+	dependencies := tokenTestDependencies(func() (secrets.Store, error) {
+		t.Fatal("token store should not open on cache hit")
+		return nil, errBoom
+	})
+	dependencies.AccessTokenCacheDir = func() (string, error) { return cacheDir, nil }
+
+	ts, err := tokenSourceForAccountScopesWithStoredScopeCheck(context.Background(), dependencies, "svc", "a@b.com", "default", "id", "secret", scopes, true)
+	if err != nil {
+		t.Fatalf("tokenSourceForAccountScopes: %v", err)
+	}
+
+	tok, err := ts.Token()
+	if err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	if tok.AccessToken != "cached-access" {
+		t.Fatalf("access token = %q, want cached-access", tok.AccessToken)
+	}
+}
+
+func TestTokenSourceForAccountScopes_DoesNotUseCacheBeforeRequiredStoredGrant(t *testing.T) {
+	cacheDir := t.TempDir()
+
+	if err := writeAccessTokenCache(cacheDir, "default", "a@b.com", []string{"s1"}, []string{"s2"}, &oauth2.Token{
+		AccessToken: "cached-access",
+		Expiry:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("writeAccessTokenCache: %v", err)
+	}
+
+	dependencies := tokenTestDependencies(func() (secrets.Store, error) {
+		return &stubStore{tok: secrets.Token{
+			Email:        "a@b.com",
+			RefreshToken: "rt",
+			Services:     []string{"svc"},
+			Scopes:       []string{"s2"},
+		}}, nil
+	})
+	dependencies.AccessTokenCacheDir = func() (string, error) { return cacheDir, nil }
+
+	_, err := tokenSourceForAccountScopesWithStoredScopeCheck(context.Background(), dependencies, "svc", "a@b.com", "default", "id", "secret", []string{"s1"}, true)
+	var scopeErr *InsufficientScopeError
+	if !errors.As(err, &scopeErr) {
+		t.Fatalf("expected InsufficientScopeError, got %T: %v", err, err)
+	}
+}
+
+func TestTokenSourceForAccountScopes_WritesAccessTokenCache(t *testing.T) {
+	cacheDir := t.TempDir()
+	scopes := []string{"s1"}
+	expires := time.Now().Add(time.Hour)
+	store := &stubStore{tok: secrets.Token{
+		Email:                "a@b.com",
+		RefreshToken:         "refresh-token",
+		AccessToken:          "fresh-access",
+		AccessTokenExpiresAt: expires,
+		Scopes:               []string{"s2", "s1"},
+	}}
+	dependencies := tokenTestDependencies(func() (secrets.Store, error) {
+		return store, nil
+	})
+	dependencies.AccessTokenCacheDir = func() (string, error) { return cacheDir, nil }
+
+	ts, err := tokenSourceForAccountScopesWithStoredScopeCheck(context.Background(), dependencies, "svc", "a@b.com", "default", "id", "secret", scopes, false)
+	if err != nil {
+		t.Fatalf("tokenSourceForAccountScopes: %v", err)
+	}
+	if _, tokenErr := ts.Token(); tokenErr != nil {
+		t.Fatalf("Token: %v", tokenErr)
+	}
+
+	entry, err := readAccessTokenCache(cacheDir, "default", "a@b.com", scopes)
+	if err != nil {
+		t.Fatalf("readAccessTokenCache: %v", err)
+	}
+	if entry.AccessToken != "fresh-access" || !entry.Expiry.Equal(expires) {
+		t.Fatalf("unexpected cache entry: %#v", entry)
+	}
+	if !reflect.DeepEqual(entry.GrantedScopes, []string{"s1", "s2"}) {
+		t.Fatalf("granted scopes = %#v, want s1/s2", entry.GrantedScopes)
+	}
+}
+
 func TestTokenSourceForAccountScopes_HappyPath(t *testing.T) {
 	s := &stubStore{tok: secrets.Token{Email: "a@b.com", RefreshToken: "rt"}}
 	dependencies := tokenTestDependencies(func() (secrets.Store, error) { return s, nil })

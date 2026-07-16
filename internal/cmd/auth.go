@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -17,6 +18,38 @@ func openAuthSecretsStore(ctx context.Context) (secrets.Store, error) {
 		return runtime.Auth.OpenSecretsStore()
 	}
 	return nil, errRuntimeRequired
+}
+
+func configuredAccessTokenCacheDir(ctx context.Context) (string, error) {
+	configStore, err := commandConfigStore(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	cfg, err := configStore.Read()
+	if err != nil {
+		return "", err
+	}
+
+	if !cfg.AccessTokenCache {
+		return "", nil
+	}
+
+	layout, err := commandLayout(ctx, config.PathKindState)
+	if err != nil {
+		return "", err
+	}
+
+	return layout.AccessTokenCacheDir(), nil
+}
+
+func clearAccessTokenCache(ctx context.Context) error {
+	layout, err := commandLayout(ctx, config.PathKindState)
+	if err != nil {
+		return nil
+	}
+
+	return os.RemoveAll(layout.AccessTokenCacheDir())
 }
 
 func authorizeGoogleAccount(ctx context.Context, opts googleauth.AuthorizeOptions) (string, error) {

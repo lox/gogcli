@@ -25,6 +25,7 @@ func TestLayoutDerivedPaths(t *testing.T) {
 	}{
 		{name: "config", got: layout.ConfigPath(), want: filepath.Join(root, "config", "config.json")},
 		{name: "batch", got: layout.BatchDir(), want: filepath.Join(root, "state", "batches")},
+		{name: "access token cache", got: layout.AccessTokenCacheDir(), want: filepath.Join(root, "state", "access-token-cache")},
 		{name: "keyring", got: layout.PrimaryKeyringDir(), want: filepath.Join(root, "data", "keyring")},
 		{name: "legacy keyring", got: layout.LegacyKeyringDir(), want: filepath.Join(root, "config", "keyring")},
 		{name: "downloads", got: layout.DriveDownloadsDir(), want: filepath.Join(root, "config", "drive-downloads")},

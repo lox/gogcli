@@ -87,6 +87,7 @@ gog auth keyring 1password
 gog config set onepassword_auth desktop
 gog config set onepassword_account 'Your 1Password account name'
 gog config set onepassword_vault replace-with-vault-id
+gog config set access_token_cache true
 ```
 
 Items are created as API Credential entries titled `gogcli-keyring` by default;

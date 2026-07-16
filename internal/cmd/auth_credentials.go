@@ -98,6 +98,9 @@ func (c *AuthCredentialsSetCmd) Run(ctx context.Context, flags *RootFlags) error
 	if writeErr := credentialStore.Write(client, creds, c.Insecure); writeErr != nil {
 		return writeErr
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
 
 	outPath, err := credentialStore.PathFor(client)
 	if err != nil {
@@ -280,6 +283,9 @@ func (c *AuthCredentialsRemoveCmd) Run(ctx context.Context, flags *RootFlags) er
 	if err != nil {
 		return err
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
 
 	return writeResult(ctx, u,
 		kv("removed", true),
@@ -345,6 +351,9 @@ func (c *AuthCredentialsRemoveCmd) removeAll(ctx context.Context, flags *RootFla
 	}
 	sort.Strings(allTokens)
 	sort.Strings(allDomains)
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
 
 	return writeResult(ctx, u,
 		kv("removed", len(creds)),

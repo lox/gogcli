@@ -256,6 +256,9 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 		Mode:                      cli.authMode,
 		ADCTokenSource:            googleapi.DefaultADCTokenSource,
 		ServiceAccountTokenSource: googleapi.DefaultServiceAccountTokenSource,
+		AccessTokenCacheDir: func() (string, error) {
+			return configuredAccessTokenCacheDir(runtimeContext)
+		},
 	}
 	ctx = googleapi.WithAuthDependencies(ctx, authDependencies)
 	composeRuntimeGoogleServices(runtime, googleapi.NewFactory(authDependencies, googleapi.FactoryOptions{

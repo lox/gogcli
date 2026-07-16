@@ -18,6 +18,7 @@ type File struct {
 	OnePasswordVault     string            `json:"onepassword_vault,omitempty"`
 	OnePasswordItemTitle string            `json:"onepassword_item_title,omitempty"`
 	OnePasswordTimeout   string            `json:"onepassword_timeout,omitempty"`
+	AccessTokenCache     bool              `json:"access_token_cache,omitempty"`
 	DefaultTimezone      string            `json:"default_timezone,omitempty"`
 	YoutubeAPIKey        string            `json:"youtube_api_key,omitempty"`
 	PlacesAPIKey         string            `json:"places_api_key,omitempty"`

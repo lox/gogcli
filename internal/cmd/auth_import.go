@@ -100,6 +100,9 @@ func (c *AuthImportCmd) Run(ctx context.Context, flags *RootFlags) error {
 	}); err != nil {
 		return err
 	}
+	if err := clearAccessTokenCache(ctx); err != nil {
+		return err
+	}
 	if strings.TrimSpace(override) != "" {
 		configStore, err := commandConfigStore(ctx)
 		if err != nil {

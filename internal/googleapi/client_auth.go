@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/99designs/keyring"
 	"golang.org/x/oauth2"
@@ -318,6 +319,17 @@ func tokenSourceForAccountScopesWithStoredScopeCheck(
 	requiredScopes []string,
 	requireStoredGrant bool,
 ) (oauth2.TokenSource, error) {
+	accessTokenCacheDir, err := dependencies.accessTokenCacheDir()
+	if err != nil {
+		return nil, err
+	}
+
+	if ts, ok := cachedAccessTokenSource(accessTokenCacheDir, client, email, requiredScopes, requireStoredGrant, time.Now()); ok {
+		slog.Debug("using cached access token", "serviceLabel", serviceLabel, "email", email, "client", client)
+
+		return ts, nil
+	}
+
 	var store secrets.Store
 
 	if s, err := dependencies.openTokens(); err != nil {
@@ -377,7 +389,9 @@ func tokenSourceForAccountScopesWithStoredScopeCheck(
 		Expiry:       tok.AccessTokenExpiresAt,
 	})
 
-	return newPersistingTokenSource(baseSource, store, client, email, tok, serviceLabel, dependencies.updateEmailReferences), nil
+	source := newPersistingTokenSource(baseSource, store, client, email, tok, serviceLabel, dependencies.updateEmailReferences)
+
+	return newAccessTokenCachingSource(source, accessTokenCacheDir, client, email, requiredScopes, tok.Scopes), nil
 }
 
 func tokenGrantedScopes(t *oauth2.Token) []string {

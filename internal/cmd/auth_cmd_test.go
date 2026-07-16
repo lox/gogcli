@@ -932,3 +932,28 @@ func TestAuthRemove_CleansUpConfig(t *testing.T) {
 		t.Fatalf("expected account_clients entry for other@example.com to be preserved, got: %v", updated.AccountClients)
 	}
 }
+
+func TestAuthRemoveClearsAccessTokenCache(t *testing.T) {
+	home := t.TempDir()
+	cacheDir := filepath.Join(home, "state", "access-token-cache")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir cache: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "cached.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	store := newMemSecretsStore()
+	if err := store.SetToken(config.DefaultClientName, "remove@example.com", secrets.Token{RefreshToken: "rt"}); err != nil {
+		t.Fatalf("SetToken: %v", err)
+	}
+
+	result := executeWithTestRuntime(t, []string{"--home", home, "--json", "--force", "auth", "remove", "remove@example.com"}, runtimeWithAuthStore(store))
+	if result.err != nil {
+		t.Fatalf("Execute remove: %v\nstderr=%s", result.err, result.stderr)
+	}
+
+	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
+		t.Fatalf("expected access token cache to be removed, stat err=%v", err)
+	}
+}
