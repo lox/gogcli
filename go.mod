@@ -21,7 +21,7 @@ require (
 	google.golang.org/api v0.286.0
 )
 
-require github.com/lox/onepassword-sdk-native-go v0.0.0-20260704092955-69f3c2e4d91c
+require github.com/lox/onepassword-sdk-native-go v0.1.1-0.20260716070542-45b94d42cd47
 
 require gopkg.in/yaml.v3 v3.0.1 // indirect
 
