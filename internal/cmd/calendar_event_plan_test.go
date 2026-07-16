@@ -63,6 +63,12 @@ func TestBuildCalendarUpdatePlanValidatesSelectedFields(t *testing.T) {
 			want:   "cannot use both --attendees and --add-attendee",
 		},
 		{
+			name:   "meet removal conflicts with creation",
+			input:  calendarUpdateInput{CalendarID: "primary", EventID: "event-1"},
+			fields: calendarUpdateFields{WithMeet: true, RemoveMeet: true},
+			want:   "use only one of --with-meet, --regenerate-meet, or --remove-meet",
+		},
+		{
 			name:   "empty add attendee",
 			input:  calendarUpdateInput{CalendarID: "primary", EventID: "event-1"},
 			fields: calendarUpdateFields{AddAttendee: true},

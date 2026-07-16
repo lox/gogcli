@@ -49,6 +49,8 @@ func validateZoomConferenceFlagMutex(fields calendarUpdateFields) error {
 		{{name: "with-zoom", selected: fields.WithZoom}, {name: "regenerate-meet", selected: fields.RegenerateMeet}},
 		{{name: "regenerate-zoom", selected: fields.RegenerateZoom}, {name: "with-meet", selected: fields.WithMeet}},
 		{{name: "regenerate-zoom", selected: fields.RegenerateZoom}, {name: "regenerate-meet", selected: fields.RegenerateMeet}},
+		{{name: "with-zoom", selected: fields.WithZoom}, {name: "remove-meet", selected: fields.RemoveMeet}},
+		{{name: "regenerate-zoom", selected: fields.RegenerateZoom}, {name: "remove-meet", selected: fields.RemoveMeet}},
 	}
 	for _, pair := range pairs {
 		if pair[0].selected && pair[1].selected {

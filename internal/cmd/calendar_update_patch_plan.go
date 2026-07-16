@@ -328,7 +328,7 @@ func applyUpdateGuestOptions(input calendarUpdateInput, fields calendarUpdateFie
 }
 
 func applyUpdateConferenceData(fields calendarUpdateFields, patch *calendar.Event) bool {
-	if fields.RemoveZoom {
+	if fields.RemoveMeet || fields.RemoveZoom {
 		patch.NullFields = append(patch.NullFields, "ConferenceData")
 		return true
 	}

@@ -62,6 +62,7 @@ gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]
 | `--regenerate-meet` | `bool` |  | Replace the event's Google Meet video conference |
 | `--regenerate-zoom` | `bool` |  | Replace the event's Zoom video conference |
 | `--reminder` | `[]string` |  | Custom reminders as method:duration (e.g., popup:30m, email:1d). Can be repeated (max 5). Set empty to clear. |
+| `--remove-meet` | `bool` |  | Remove the event's Google Meet video conference |
 | `--remove-zoom` | `bool` |  | Remove the event's Zoom video conference |
 | `--results-only` | `bool` |  | In JSON mode, emit only the primary result (drops envelope fields like nextPageToken) |
 | `--rrule` | `[]string` |  | Recurrence rules (e.g., 'RRULE:FREQ=MONTHLY;BYMONTHDAY=11'). Can be repeated. Set empty to clear. |
